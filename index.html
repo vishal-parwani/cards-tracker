@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Card Spend Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Auth Screen -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">💳</div>
+      <h1>Card Spend Tracker</h1>
+      <p>Sign in to view your dashboard</p>
+      <button id="apple-signin-btn" class="apple-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 814 1000" width="18" height="18" fill="white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.5 268.1-317.5 71.2 0 130.5 46.8 171.5 46.8 41 0 106.2-49.1 185.2-49.1zm-16.7-219.7c31.2-38.5 53.6-91.9 53.6-145.3 0-7.7-.6-15.4-1.9-21.7-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 85.7-55.1 139.8 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135-69.1z"/></svg>
+        Sign in with Apple
+      </button>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="hidden">
+
+    <header class="header">
+      <span class="header-title">💳 Card Tracker</span>
+      <div class="header-right">
+        <span id="user-name" class="user-name"></span>
+        <button id="sign-out-btn" class="btn-link">Sign out</button>
+      </div>
+    </header>
+
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="transactions">Transactions</button>
+      <button class="tab-btn" data-tab="voucher-trades">Voucher Trades</button>
+      <button class="tab-btn" data-tab="rewards">Rewards</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <main class="main-content">
+
+      <!-- Dashboard -->
+      <div id="tab-dashboard" class="tab-panel">
+        <div id="dashboard-content"></div>
+      </div>
+
+      <!-- Transactions -->
+      <div id="tab-transactions" class="tab-panel hidden">
+        <div class="section-header">
+          <h2 class="section-title">Transactions</h2>
+          <button id="add-txn-btn" class="btn btn-primary">+ Add</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Card</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Points</th>
+                <th>Tag</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="transactions-list"></tbody>
+          </table>
+        </div>
+        <div class="load-more-wrap">
+          <button id="load-more-btn" class="btn btn-secondary" style="display:none">Load more</button>
+        </div>
+      </div>
+
+      <!-- Voucher Trades -->
+      <div id="tab-voucher-trades" class="tab-panel hidden">
+        <div class="section-header">
+          <h2 class="section-title">Voucher Trades</h2>
+          <div class="btn-group">
+            <button id="toggle-completed-btn" class="btn btn-secondary">Show Completed</button>
+            <button id="add-trade-btn" class="btn btn-primary">+ Add</button>
+          </div>
+        </div>
+        <div id="voucher-trades-list"></div>
+      </div>
+
+      <!-- Rewards -->
+      <div id="tab-rewards" class="tab-panel hidden">
+        <div class="section-header">
+          <h2 class="section-title">Rewards Tracker</h2>
+          <button id="add-reward-btn" class="btn btn-primary">+ Add</button>
+        </div>
+        <div class="table-wrap">
+          <div id="rewards-list"></div>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div id="tab-settings" class="tab-panel hidden">
+        <div id="settings-content"></div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal: Add/Edit Transaction -->
+  <div id="transaction-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Add Transaction</h3>
+        <button class="modal-close" id="cancel-txn-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="txn-id">
+        <div class="form-row">
+          <label>Date</label>
+          <input type="date" id="txn-date" required>
+        </div>
+        <div class="form-row">
+          <label>Card</label>
+          <select id="txn-card"></select>
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <input type="text" id="txn-description" placeholder="Merchant name">
+        </div>
+        <div class="form-row">
+          <label>Category</label>
+          <select id="txn-category">
+            <option value="">Select category</option>
+            <option>Food & Dining</option><option>Shopping</option><option>Travel</option>
+            <option>Entertainment</option><option>Groceries</option><option>Electronics</option>
+            <option>Rent</option><option>Utilities</option><option>Health & Medical</option>
+            <option>Insurance</option><option>Fuel</option><option>Education & Classes</option>
+            <option>Fees & Charges</option><option>Wallet Load</option><option>Miscellaneous</option>
+          </select>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Amount (₹)</label>
+            <input type="number" id="txn-amount" step="0.01" min="0" required>
+          </div>
+          <div>
+            <label>Type</label>
+            <select id="txn-type">
+              <option value="debit">Debit</option>
+              <option value="credit">Credit</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Points Earned</label>
+            <input type="number" id="txn-points" value="0" min="0">
+          </div>
+          <div>
+            <label>Tag</label>
+            <select id="txn-tag">
+              <option value="">None</option>
+              <option>SmartBuy</option><option>iShop</option><option>VERNOST</option>
+              <option>Grab Deals</option><option>AEP Ineligible</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Statement Period</label>
+          <input type="text" id="txn-statement-period" placeholder="e.g. 01/04/2026 - 30/04/2026">
+        </div>
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="txn-reimbursable">
+          <label for="txn-reimbursable">Reimbursable</label>
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <input type="text" id="txn-notes" placeholder="Optional">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-txn-btn-2" class="btn btn-secondary" onclick="document.getElementById('transaction-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-txn-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add/Edit Voucher Trade -->
+  <div id="add-trade-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Add Voucher Trade</h3>
+        <button class="modal-close" id="cancel-trade-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="trade-id">
+        <div class="form-row">
+          <label>Purchase Date</label>
+          <input type="date" id="trade-date" required>
+        </div>
+        <div class="form-row">
+          <label>Card</label>
+          <select id="trade-card"></select>
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <input type="text" id="trade-description" placeholder="e.g. AMAZON PAY">
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Purchase Amount (₹)</label>
+            <input type="number" id="trade-amount" step="0.01" min="0" required>
+          </div>
+          <div>
+            <label>Points Earned</label>
+            <input type="number" id="trade-points" min="0">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-trade-btn-2" class="btn btn-secondary" onclick="document.getElementById('add-trade-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-trade-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Mark as Traded -->
+  <div id="mark-traded-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Mark as Traded</h3>
+        <button class="modal-close" id="cancel-mark-traded-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="mark-traded-id">
+        <p id="mark-traded-desc" class="trade-desc"></p>
+        <div class="form-row">
+          <label>Trade Date</label>
+          <input type="date" id="mark-traded-trade-date" required>
+        </div>
+        <div class="form-row">
+          <label>Cash Received (₹)</label>
+          <input type="number" id="mark-traded-cash" step="0.01" min="0" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-mark-traded-btn-2" class="btn btn-secondary" onclick="document.getElementById('mark-traded-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-mark-traded-btn" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add/Edit Reward -->
+  <div id="reward-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Rewards Entry</h3>
+        <button class="modal-close" id="cancel-reward-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="reward-id">
+        <div class="form-row two-col">
+          <div>
+            <label>Card</label>
+            <input type="text" id="reward-card" placeholder="Card name">
+          </div>
+          <div>
+            <label>Points Type</label>
+            <input type="text" id="reward-points-type" placeholder="e.g. eDGE Miles">
+          </div>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Statement Period</label>
+            <input type="text" id="reward-stmt-period" placeholder="e.g. 20/03/2026 - 18/04/2026">
+          </div>
+          <div>
+            <label>Statement Date</label>
+            <input type="date" id="reward-stmt-date">
+          </div>
+        </div>
+        <div class="form-row four-col">
+          <div>
+            <label>Opening</label>
+            <input type="number" id="reward-opening" min="0">
+          </div>
+          <div>
+            <label>Earned</label>
+            <input type="number" id="reward-earned" min="0">
+          </div>
+          <div>
+            <label>Redeemed</label>
+            <input type="number" id="reward-redeemed" min="0">
+          </div>
+          <div>
+            <label>Lapsed</label>
+            <input type="number" id="reward-lapsed" min="0">
+          </div>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Closing Balance</label>
+            <input type="number" id="reward-closing" min="0">
+          </div>
+          <div>
+            <label>Notes</label>
+            <input type="text" id="reward-notes" placeholder="Optional">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-reward-btn-2" class="btn btn-secondary" onclick="document.getElementById('reward-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-reward-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add/Edit Card -->
+  <div id="card-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3 id="card-modal-title">Add Card</h3>
+        <button class="modal-close" id="cancel-card-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="card-original-name">
+        <div class="form-row">
+          <label>Card Name</label>
+          <input type="text" id="card-name-input" placeholder="e.g. Infinia">
+        </div>
+        <div class="form-row">
+          <label>Statement Cutoff Day</label>
+          <input type="number" id="card-cutoff-input" min="1" max="31" placeholder="e.g. 25">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-card-btn-2" class="btn btn-secondary" onclick="document.getElementById('card-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-card-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

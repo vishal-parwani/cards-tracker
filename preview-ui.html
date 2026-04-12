@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UI Preview — More Palettes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f2ede6; font-family: 'Nunito', sans-serif; font-size: 14px; padding: 24px; }
+    h1 { font-size: 18px; font-weight: 800; margin-bottom: 6px; color: #3d2b1f; }
+    .subtitle { font-size: 13px; color: #9c8374; margin-bottom: 28px; font-weight: 600; }
+    h2 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #9c8374; margin-bottom: 14px; }
+    .section { margin-bottom: 44px; }
+    .palette-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+
+    .palette-card { border-radius: 14px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.09); }
+    .palette-header { padding: 16px 18px; }
+    .palette-name { font-size: 14px; font-weight: 800; }
+    .palette-desc { font-size: 11px; margin-top: 3px; opacity: 0.75; font-weight: 600; }
+    .swatches { display: flex; height: 32px; }
+    .swatch { flex: 1; }
+    .palette-body { padding: 16px 18px; }
+    .ui-card { border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+    .ui-label { font-size: 11px; font-weight: 700; margin-bottom: 3px; }
+    .ui-value { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+    .ui-sub { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+    .bar-wrap { height: 7px; border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
+    .bar { height: 100%; border-radius: 999px; width: 62%; }
+    .bar-info { font-size: 11px; font-weight: 700; display: flex; justify-content: space-between; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+    .ui-btn { font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 9px; border: none; cursor: default; width: 100%; }
+    .tag { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 4px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* ── Palette 1: Sage & Warm Cream (current) ── */
+    .p1-head { background: #3a5a40; color: white; }
+    .p1-s1{background:#3a5a40} .p1-s2{background:#6b8f71} .p1-s3{background:#a8c5a0} .p1-s4{background:#d9e8d4} .p1-s5{background:#f0ede6}
+    .p1-body { background: #f0ede6; }
+    .p1-card { background: #fafaf7; }
+    .p1-label { color: #7a8c78; } .p1-val { color: #2d4a33; } .p1-sub { color: #7a8c78; }
+    .p1-bar-bg { background: #d9e8d4; } .p1-bar { background: #6b8f71; }
+    .p1-info { color: #7a8c78; }
+    .p1-b1 { background: #d9e8d4; color: #3a5a40; }
+    .p1-b2 { background: #fdebd0; color: #a05a2c; }
+    .p1-b3 { background: #fdd9cc; color: #a03a2c; }
+    .p1-btn { background: #3a5a40; color: white; }
+    .p1-tag { background: #d9e8d4; color: #3a5a40; }
+
+    /* ── Palette 2: Dusty Rose & Linen ── */
+    .p2-head { background: #7a4a52; color: white; }
+    .p2-s1{background:#7a4a52} .p2-s2{background:#b07a82} .p2-s3{background:#d4a8ae} .p2-s4{background:#edd9dc} .p2-s5{background:#f7f0f1}
+    .p2-body { background: #f5eeef; }
+    .p2-card { background: #fdf8f8; }
+    .p2-label { color: #9a7078; } .p2-val { color: #5a2a32; } .p2-sub { color: #9a7078; }
+    .p2-bar-bg { background: #edd9dc; } .p2-bar { background: #b07a82; }
+    .p2-info { color: #9a7078; }
+    .p2-b1 { background: #edd9dc; color: #7a4a52; }
+    .p2-b2 { background: #d9edd9; color: #3a6a3a; }
+    .p2-b3 { background: #fde8d8; color: #a05030; }
+    .p2-btn { background: #7a4a52; color: white; }
+    .p2-tag { background: #edd9dc; color: #7a4a52; }
+
+    /* ── Palette 3: Ochre & Stone ── */
+    .p3-head { background: #5a4a2a; color: white; }
+    .p3-s1{background:#5a4a2a} .p3-s2{background:#c49a3c} .p3-s3{background:#e0c878} .p3-s4{background:#f0e4b8} .p3-s5{background:#f8f4e8}
+    .p3-body { background: #f2ece0; }
+    .p3-card { background: #fdf9f0; }
+    .p3-label { color: #8a7a55; } .p3-val { color: #4a3a1a; } .p3-sub { color: #8a7a55; }
+    .p3-bar-bg { background: #e8d8a8; } .p3-bar { background: #c49a3c; }
+    .p3-info { color: #8a7a55; }
+    .p3-b1 { background: #f0e4b8; color: #7a6020; }
+    .p3-b2 { background: #d4edd4; color: #3a6a3a; }
+    .p3-b3 { background: #fdd9cc; color: #a03a2c; }
+    .p3-btn { background: #c49a3c; color: white; }
+    .p3-tag { background: #f0e4b8; color: #7a6020; }
+
+    /* ── Palette 4: Muted Teal & Warm Sand ── */
+    .p4-head { background: #2a5a58; color: white; }
+    .p4-s1{background:#2a5a58} .p4-s2{background:#5a9a96} .p4-s3{background:#9ac8c4} .p4-s4{background:#cce4e2} .p4-s5{background:#f0f6f5}
+    .p4-body { background: #eaf2f1; }
+    .p4-card { background: #f8fcfb; }
+    .p4-label { color: #6a8a88; } .p4-val { color: #1a4a48; } .p4-sub { color: #6a8a88; }
+    .p4-bar-bg { background: #cce4e2; } .p4-bar { background: #5a9a96; }
+    .p4-info { color: #6a8a88; }
+    .p4-b1 { background: #cce4e2; color: #2a5a58; }
+    .p4-b2 { background: #fdebd0; color: #a05a20; }
+    .p4-b3 { background: #fdd9cc; color: #a03a2c; }
+    .p4-btn { background: #2a5a58; color: white; }
+    .p4-tag { background: #cce4e2; color: #2a5a58; }
+
+    /* ── Palette 5: Warm Mauve & Cream ── */
+    .p5-head { background: #5a3a5a; color: white; }
+    .p5-s1{background:#5a3a5a} .p5-s2{background:#9a6a9a} .p5-s3{background:#c4a0c4} .p5-s4{background:#e4d0e4} .p5-s5{background:#f5eef5}
+    .p5-body { background: #f2eaf2; }
+    .p5-card { background: #fdf8fd; }
+    .p5-label { color: #8a6a8a; } .p5-val { color: #3a1a3a; } .p5-sub { color: #8a6a8a; }
+    .p5-bar-bg { background: #e4d0e4; } .p5-bar { background: #9a6a9a; }
+    .p5-info { color: #8a6a8a; }
+    .p5-b1 { background: #e4d0e4; color: #5a3a5a; }
+    .p5-b2 { background: #d4edd4; color: #3a6a3a; }
+    .p5-b3 { background: #fdebd0; color: #a05a20; }
+    .p5-btn { background: #5a3a5a; color: white; }
+    .p5-tag { background: #e4d0e4; color: #5a3a5a; }
+
+    /* ── Palette 6: Rust & Ivory ── */
+    .p6-head { background: #8a3a20; color: white; }
+    .p6-s1{background:#8a3a20} .p6-s2{background:#c4622a} .p6-s3{background:#e0a070} .p6-s4{background:#f0d0b0} .p6-s5{background:#faf4ee}
+    .p6-body { background: #f5ede4; }
+    .p6-card { background: #fdf8f4; }
+    .p6-label { color: #9a6a50; } .p6-val { color: #5a1a08; } .p6-sub { color: #9a6a50; }
+    .p6-bar-bg { background: #f0d0b0; } .p6-bar { background: #c4622a; }
+    .p6-info { color: #9a6a50; }
+    .p6-b1 { background: #f0d0b0; color: #8a3a20; }
+    .p6-b2 { background: #d4edd4; color: #3a6a3a; }
+    .p6-b3 { background: #fdd9cc; color: #8a2a1a; }
+    .p6-btn { background: #c4622a; color: white; }
+    .p6-tag { background: #f0d0b0; color: #8a3a20; }
+  </style>
+</head>
+<body>
+
+<h1>Colour Palette Options</h1>
+<p class="subtitle">All using Nunito font · Each shows a balance card + tracker card + badges</p>
+
+<div class="section">
+  <div class="palette-grid">
+
+    <!-- Helper macro via copy-paste for each palette -->
+
+    <!-- P1 Sage & Warm Cream (CURRENT) -->
+    <div class="palette-card">
+      <div class="palette-header p1-head">
+        <div class="tag p1-tag">Current</div>
+        <div class="palette-name">Sage & Warm Cream</div>
+        <div class="palette-desc">Calm · Natural · Refined</div>
+      </div>
+      <div class="swatches"><div class="swatch p1-s1"></div><div class="swatch p1-s2"></div><div class="swatch p1-s3"></div><div class="swatch p1-s4"></div><div class="swatch p1-s5"></div></div>
+      <div class="palette-body p1-body">
+        <div class="ui-card p1-card">
+          <div class="ui-label p1-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p1-val">₹1,42,350</div>
+          <div class="ui-label p1-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p1-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p1-bar-bg"><div class="bar p1-bar" style="width:61%"></div></div>
+          <div class="bar-info p1-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p1-b1">Band 2 ✓</span>
+          <span class="badge p1-b2">Pending</span>
+          <span class="badge p1-b3">Cap near</span>
+        </div>
+        <button class="ui-btn p1-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <!-- P2 Dusty Rose & Linen -->
+    <div class="palette-card">
+      <div class="palette-header p2-head">
+        <div class="palette-name">Dusty Rose & Linen</div>
+        <div class="palette-desc">Warm · Soft · Elegant</div>
+      </div>
+      <div class="swatches"><div class="swatch p2-s1"></div><div class="swatch p2-s2"></div><div class="swatch p2-s3"></div><div class="swatch p2-s4"></div><div class="swatch p2-s5"></div></div>
+      <div class="palette-body p2-body">
+        <div class="ui-card p2-card">
+          <div class="ui-label p2-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p2-val">₹1,42,350</div>
+          <div class="ui-label p2-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p2-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p2-bar-bg"><div class="bar p2-bar" style="width:61%"></div></div>
+          <div class="bar-info p2-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p2-b1">Band 2 ✓</span>
+          <span class="badge p2-b2">Active</span>
+          <span class="badge p2-b3">Pending</span>
+        </div>
+        <button class="ui-btn p2-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <!-- P3 Ochre & Stone -->
+    <div class="palette-card">
+      <div class="palette-header p3-head">
+        <div class="palette-name">Ochre & Stone</div>
+        <div class="palette-desc">Golden · Grounded · Rich</div>
+      </div>
+      <div class="swatches"><div class="swatch p3-s1"></div><div class="swatch p3-s2"></div><div class="swatch p3-s3"></div><div class="swatch p3-s4"></div><div class="swatch p3-s5"></div></div>
+      <div class="palette-body p3-body">
+        <div class="ui-card p3-card">
+          <div class="ui-label p3-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p3-val">₹1,42,350</div>
+          <div class="ui-label p3-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p3-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p3-bar-bg"><div class="bar p3-bar" style="width:61%"></div></div>
+          <div class="bar-info p3-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p3-b1">Band 2 ✓</span>
+          <span class="badge p3-b2">Active</span>
+          <span class="badge p3-b3">Cap near</span>
+        </div>
+        <button class="ui-btn p3-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <!-- P4 Muted Teal & Sand -->
+    <div class="palette-card">
+      <div class="palette-header p4-head">
+        <div class="palette-name">Muted Teal & Sand</div>
+        <div class="palette-desc">Cool · Earthy · Fresh</div>
+      </div>
+      <div class="swatches"><div class="swatch p4-s1"></div><div class="swatch p4-s2"></div><div class="swatch p4-s3"></div><div class="swatch p4-s4"></div><div class="swatch p4-s5"></div></div>
+      <div class="palette-body p4-body">
+        <div class="ui-card p4-card">
+          <div class="ui-label p4-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p4-val">₹1,42,350</div>
+          <div class="ui-label p4-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p4-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p4-bar-bg"><div class="bar p4-bar" style="width:61%"></div></div>
+          <div class="bar-info p4-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p4-b1">Band 2 ✓</span>
+          <span class="badge p4-b2">Pending</span>
+          <span class="badge p4-b3">Cap near</span>
+        </div>
+        <button class="ui-btn p4-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <!-- P5 Warm Mauve & Cream -->
+    <div class="palette-card">
+      <div class="palette-header p5-head">
+        <div class="palette-name">Warm Mauve & Cream</div>
+        <div class="palette-desc">Soft · Romantic · Earthy</div>
+      </div>
+      <div class="swatches"><div class="swatch p5-s1"></div><div class="swatch p5-s2"></div><div class="swatch p5-s3"></div><div class="swatch p5-s4"></div><div class="swatch p5-s5"></div></div>
+      <div class="palette-body p5-body">
+        <div class="ui-card p5-card">
+          <div class="ui-label p5-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p5-val">₹1,42,350</div>
+          <div class="ui-label p5-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p5-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p5-bar-bg"><div class="bar p5-bar" style="width:61%"></div></div>
+          <div class="bar-info p5-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p5-b1">Band 2 ✓</span>
+          <span class="badge p5-b2">Active</span>
+          <span class="badge p5-b3">Pending</span>
+        </div>
+        <button class="ui-btn p5-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <!-- P6 Rust & Ivory -->
+    <div class="palette-card">
+      <div class="palette-header p6-head">
+        <div class="palette-name">Rust & Ivory</div>
+        <div class="palette-desc">Bold · Warm · Confident</div>
+      </div>
+      <div class="swatches"><div class="swatch p6-s1"></div><div class="swatch p6-s2"></div><div class="swatch p6-s3"></div><div class="swatch p6-s4"></div><div class="swatch p6-s5"></div></div>
+      <div class="palette-body p6-body">
+        <div class="ui-card p6-card">
+          <div class="ui-label p6-label">Magnus Burgundy · Apr 1 – Apr 30</div>
+          <div class="ui-value p6-val">₹1,42,350</div>
+          <div class="ui-label p6-label" style="margin-bottom:6px">Infinia SmartBuy Cap</div>
+          <div class="ui-sub p6-sub">9,200 / 15,000 pts · ₹86,250 spent</div>
+          <div class="bar-wrap p6-bar-bg"><div class="bar p6-bar" style="width:61%"></div></div>
+          <div class="bar-info p6-info"><span>₹43,500 to max cap</span><span>61% used</span></div>
+        </div>
+        <div class="badges">
+          <span class="badge p6-b1">Band 2 ✓</span>
+          <span class="badge p6-b2">Active</span>
+          <span class="badge p6-b3">Cap near</span>
+        </div>
+        <button class="ui-btn p6-btn">+ Add Transaction</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

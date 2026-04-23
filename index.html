@@ -331,8 +331,24 @@
           <input type="text" id="card-name-input" placeholder="e.g. Infinia">
         </div>
         <div class="form-row">
-          <label>Statement Cutoff Day</label>
-          <input type="number" id="card-cutoff-input" min="1" max="31" placeholder="e.g. 25">
+          <label>Bank</label>
+          <input type="text" id="card-bank-input" placeholder="e.g. HDFC Bank">
+        </div>
+        <div class="form-row">
+          <label>Last 4 Digits</label>
+          <input type="text" id="card-last4-input" maxlength="4" placeholder="e.g. 9843">
+        </div>
+        <div class="form-row">
+          <label>Statement Date <span class="form-hint">(day of month)</span></label>
+          <input type="number" id="card-cutoff-input" min="1" max="31" placeholder="e.g. 5">
+        </div>
+        <div class="form-row">
+          <label>Bill Payment Due Date <span class="form-hint">(day of month)</span></label>
+          <input type="number" id="card-bill-input" min="1" max="31" placeholder="e.g. 28">
+        </div>
+        <div class="form-row form-row-inline">
+          <label>Active</label>
+          <input type="checkbox" id="card-active-input" checked>
         </div>
       </div>
       <div class="modal-footer">

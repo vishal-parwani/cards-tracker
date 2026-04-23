@@ -9,7 +9,10 @@ export async function loadDashboard() {
   try {
     const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
     const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
-    const cards = Object.entries(cardsData).map(([name, cutoffDay]) => ({ name, cutoffDay }));
+    const cards = Object.entries(cardsData).map(([name, val]) => ({
+      name,
+      cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
+    }));
 
     const mbAepSnap = await getDoc(doc(db, 'config', 'mbAep'));
     const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};

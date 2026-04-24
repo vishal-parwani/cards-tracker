@@ -24,6 +24,7 @@ export async function loadDashboard() {
       <section class="section">
         <h2 class="section-title">Card Balances</h2>
         <div class="cards-grid">
+          ${renderTotalCard(cardResults)}
           ${cardResults.map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
@@ -116,6 +117,27 @@ async function loadCardData(card, monthStart) {
     epmIshopPts,
     billingCycle: getBillingCycleLabel(card.cutoffDay)
   };
+}
+
+function renderTotalCard(cardResults) {
+  const totalStmt = cardResults.reduce((sum, r) => sum + r.stmtBalance, 0);
+  const totalMtd = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
+  return `
+    <div class="balance-card total-card">
+      <div class="balance-card-header">
+        <span class="card-name">All Cards</span>
+        <span class="billing-cycle">Combined</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">Next Statement</span>
+        <span class="balance-amount accent">${formatCurrency(totalStmt)}</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">MTD Spend</span>
+        <span class="balance-amount">${formatCurrency(totalMtd)}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderCardBalanceCard(r) {

@@ -82,9 +82,15 @@ document.getElementById('cancel-reward-btn').addEventListener('click', closeRewa
 document.getElementById('save-card-btn').addEventListener('click', saveCard);
 document.getElementById('cancel-card-btn').addEventListener('click', closeCardModal);
 
-// Close modals on backdrop click
+// Close modals on backdrop click or Escape key
 document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.addEventListener('click', e => {
     if (e.target === el) el.classList.add('hidden');
   });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(el => el.classList.add('hidden'));
+  }
 });

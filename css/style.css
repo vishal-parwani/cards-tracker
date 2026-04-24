@@ -133,6 +133,10 @@ body {
   box-shadow: 0 1px 6px rgba(92,61,46,0.08);
   border: 1px solid var(--border);
 }
+.balance-card.total-card {
+  border-color: var(--terra);
+  background: #fff3eb;
+}
 .balance-card-header { display: flex; flex-direction: column; margin-bottom: 12px; }
 .card-name   { font-weight: 800; font-size: 14px; color: var(--text); }
 .billing-cycle { font-size: 11px; color: var(--text-sec); margin-top: 2px; font-weight: 600; }
@@ -211,7 +215,9 @@ body {
 .desc-cell    { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
-.actions-cell { white-space: nowrap; }
+.actions-cell { white-space: nowrap; text-align: right; }
+.data-table th:nth-child(5) { text-align: right; }
+.data-table th:last-child   { text-align: right; }
 .pending-row  { background: #fdf8f0; }
 
 /* ── Settings ── */
@@ -251,7 +257,7 @@ body {
 }
 .modal-header h3 { font-size: 16px; font-weight: 800; color: var(--text); }
 .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-sec); }
-.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .modal-footer {
   padding: 16px 20px; border-top: 1px solid var(--border);
   display: flex; justify-content: flex-end; gap: 10px;
@@ -275,6 +281,23 @@ body {
 .four-col  { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; flex-direction: unset; }
 .checkbox-row { flex-direction: row; align-items: center; gap: 8px; }
 .checkbox-row label { margin: 0; font-size: 13px; font-weight: 600; }
+.reimbursable-col { display: flex; flex-direction: column; gap: 5px; }
+.toggle-wrap { display: inline-flex; align-items: center; cursor: pointer; padding: 3px 0; }
+.toggle-wrap input[type="checkbox"] { display: none; }
+.toggle-track {
+  width: 36px; height: 20px; border-radius: 999px;
+  background: var(--bar-bg); border: 1.5px solid var(--border);
+  position: relative; transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+.toggle-wrap input:checked + .toggle-track { background: var(--terra); border-color: var(--terra); }
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: white; transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-wrap input:checked + .toggle-track .toggle-thumb { left: 18px; }
 .trade-desc { font-size: 13px; font-weight: 600; color: var(--text); background: #f0e0d0; padding: 10px 12px; border-radius: 9px; }
 
 /* ── States ── */

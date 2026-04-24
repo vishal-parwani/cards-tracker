@@ -117,13 +117,15 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="txn-id">
-        <div class="form-row">
-          <label>Date</label>
-          <input type="date" id="txn-date" required>
-        </div>
-        <div class="form-row">
-          <label>Card</label>
-          <select id="txn-card"></select>
+        <div class="form-row two-col">
+          <div>
+            <label>Date</label>
+            <input type="date" id="txn-date" required>
+          </div>
+          <div>
+            <label>Card</label>
+            <select id="txn-card"></select>
+          </div>
         </div>
         <div class="form-row">
           <label>Description</label>
@@ -167,13 +169,18 @@
             </select>
           </div>
         </div>
-        <div class="form-row">
-          <label>Statement Period</label>
-          <input type="text" id="txn-statement-period" placeholder="e.g. 01/04/2026 - 30/04/2026">
-        </div>
-        <div class="form-row checkbox-row">
-          <input type="checkbox" id="txn-reimbursable">
-          <label for="txn-reimbursable">Reimbursable</label>
+        <div class="form-row two-col">
+          <div>
+            <label>Statement Period</label>
+            <input type="text" id="txn-statement-period" placeholder="e.g. 01/04/2026 - 30/04/2026">
+          </div>
+          <div class="reimbursable-col">
+            <label>Reimbursable</label>
+            <label class="toggle-wrap">
+              <input type="checkbox" id="txn-reimbursable">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
         </div>
         <div class="form-row">
           <label>Notes</label>

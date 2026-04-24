@@ -6,6 +6,34 @@ const PAGE_SIZE = 50;
 let lastVisible = null;
 let allLoaded = false;
 let currentFilter = { card: '', category: '' };
+let modalCardsData = {};
+let stmtListenersAttached = false;
+
+function computeStatementPeriod(dateStr, cutoffDay) {
+  if (!dateStr || !cutoffDay) return '';
+  const txnDate = new Date(dateStr);
+  const day = txnDate.getDate();
+  const stmtStart = day >= cutoffDay
+    ? new Date(txnDate.getFullYear(), txnDate.getMonth(), cutoffDay)
+    : new Date(txnDate.getFullYear(), txnDate.getMonth() - 1, cutoffDay);
+  const stmtEnd = new Date(stmtStart.getFullYear(), stmtStart.getMonth() + 1, cutoffDay - 1);
+  const fmt = d => [String(d.getDate()).padStart(2,'0'), String(d.getMonth()+1).padStart(2,'0'), d.getFullYear()].join('/');
+  return `${fmt(stmtStart)} - ${fmt(stmtEnd)}`;
+}
+
+function updateStatementPeriod() {
+  const dateStr = document.getElementById('txn-date').value;
+  const card = document.getElementById('txn-card').value;
+  const cutoffDay = modalCardsData[card];
+  document.getElementById('txn-statement-period').value = computeStatementPeriod(dateStr, cutoffDay);
+}
+
+function ensureStmtListeners() {
+  if (stmtListenersAttached) return;
+  document.getElementById('txn-date').addEventListener('change', updateStatementPeriod);
+  document.getElementById('txn-card').addEventListener('change', updateStatementPeriod);
+  stmtListenersAttached = true;
+}
 
 export async function loadTransactions(reset = false) {
   if (reset) {
@@ -73,21 +101,24 @@ function renderTransactions(txns, replace = false) {
 
 export async function openAddTransaction() {
   const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
-  const cards = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
-  showTransactionModal(null, cards);
+  showTransactionModal(null, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 
 export async function openEditTransaction(id) {
   const snap = await getDoc(doc(db, 'transactions', id));
   if (!snap.exists()) return;
   const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
-  const cards = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
-  showTransactionModal({ id, ...snap.data() }, cards);
+  showTransactionModal({ id, ...snap.data() }, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 
-function showTransactionModal(txn, cards) {
+function showTransactionModal(txn, cardsData) {
   const isEdit = !!txn;
   const date = txn?.date ? formatDateInput(txn.date.toDate()) : new Date().toISOString().split('T')[0];
+
+  modalCardsData = Object.fromEntries(
+    Object.entries(cardsData).map(([name, val]) => [name, typeof val === 'number' ? val : (val.statementDate || 1)])
+  );
+  const cards = Object.keys(cardsData);
 
   document.getElementById('modal-title').textContent = isEdit ? 'Edit Transaction' : 'Add Transaction';
   document.getElementById('txn-id').value = txn?.id || '';
@@ -99,9 +130,11 @@ function showTransactionModal(txn, cards) {
   document.getElementById('txn-type').value = txn?.type || 'debit';
   document.getElementById('txn-points').value = txn?.pointsEarned || 0;
   document.getElementById('txn-tag').value = txn?.transactionTag || '';
-  document.getElementById('txn-statement-period').value = txn?.statementPeriod || '';
   document.getElementById('txn-reimbursable').checked = txn?.reimbursable || false;
   document.getElementById('txn-notes').value = txn?.notes || '';
+
+  ensureStmtListeners();
+  updateStatementPeriod();
 
   document.getElementById('transaction-modal').classList.remove('hidden');
 }

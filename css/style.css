@@ -220,6 +220,14 @@ body {
 .data-table th:last-child   { text-align: right; }
 .pending-row  { background: #fdf8f0; }
 
+/* Transactions table column widths */
+.txn-table th:nth-child(1), .txn-table td:nth-child(1) { width: 110px; }
+.txn-table th:nth-child(2), .txn-table td:nth-child(2) { width: 100px; }
+.txn-table th:nth-child(5), .txn-table td:nth-child(5) { width: 95px; }
+.txn-table th:nth-child(6), .txn-table td:nth-child(6) { width: 70px; }
+.txn-table th:nth-child(7), .txn-table td:nth-child(7) { width: 80px; }
+.txn-table th:last-child,   .txn-table td:last-child   { width: 64px; }
+
 /* ── Settings ── */
 .cards-settings-list { display: flex; flex-direction: column; gap: 10px; }
 .settings-card {
@@ -271,7 +279,11 @@ body {
   padding: 9px 12px; border: 1.5px solid var(--border);
   border-radius: 9px; font-family: 'Nunito', sans-serif;
   font-size: 14px; font-weight: 600; color: var(--text);
-  background: white; width: 100%;
+  background: white; width: 100%; height: 40px; box-sizing: border-box;
+}
+.form-row input[readonly] {
+  background: #f5ede4; color: var(--text-sec); cursor: default;
+  border-color: transparent;
 }
 .form-row input:focus, .form-row select:focus {
   outline: none; border-color: var(--terra);

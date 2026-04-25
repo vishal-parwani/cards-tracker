@@ -25,6 +25,7 @@ export async function loadDashboard() {
         <h2 class="section-title">Card Balances</h2>
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
+          <div class="grid-row-break"></div>
           ${cardResults.map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
@@ -141,8 +142,11 @@ function renderTotalCard(cardResults) {
 }
 
 function renderCardBalanceCard(r) {
+  const aepRibbon = (r.name === 'Magnus Burgundy' && r.magnusAepEligible >= 150000)
+    ? `<span class="aep-ribbon">AEP On ✓</span>` : '';
   return `
     <div class="balance-card">
+      ${aepRibbon}
       <div class="balance-card-header">
         <span class="card-name">${r.name}</span>
         <span class="billing-cycle">${r.billingCycle}</span>

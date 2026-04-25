@@ -2,7 +2,7 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/f
 import { auth } from './config.js';
 import { signInWithApple, signOut } from './auth.js';
 import { loadDashboard } from './dashboard.js';
-import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal } from './transactions.js';
+import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted } from './voucher-trades.js';
 import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal } from './settings.js';
@@ -61,6 +61,11 @@ function switchTab(tab) {
 
 // Transactions
 document.getElementById('add-txn-btn').addEventListener('click', openAddTransaction);
+document.getElementById('filter-btn').addEventListener('click', toggleFilterPanel);
+document.getElementById('clear-filter-btn').addEventListener('click', clearFilters);
+['filter-date-from', 'filter-date-to', 'filter-card', 'filter-category', 'filter-tag', 'filter-description'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
 document.getElementById('load-more-btn').addEventListener('click', () => loadTransactions(false));
 document.getElementById('save-txn-btn').addEventListener('click', saveTransaction);
 document.getElementById('cancel-txn-btn').addEventListener('click', closeTransactionModal);

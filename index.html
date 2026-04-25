@@ -53,7 +53,56 @@
       <div id="tab-transactions" class="tab-panel hidden">
         <div class="section-header">
           <h2 class="section-title">Transactions</h2>
-          <button id="add-txn-btn" class="btn btn-primary">+ Add</button>
+          <div class="btn-group">
+            <button id="filter-btn" class="btn btn-secondary btn-icon-btn" title="Filter">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            </button>
+            <button id="add-txn-btn" class="btn btn-primary">+ Add</button>
+          </div>
+        </div>
+        <div id="filter-panel" class="filter-panel hidden">
+          <div class="filter-grid">
+            <div class="form-row">
+              <label>Date From</label>
+              <input type="date" id="filter-date-from">
+            </div>
+            <div class="form-row">
+              <label>Date To</label>
+              <input type="date" id="filter-date-to">
+            </div>
+            <div class="form-row">
+              <label>Card</label>
+              <select id="filter-card">
+                <option value="">All Cards</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Category</label>
+              <select id="filter-category">
+                <option value="">All Categories</option>
+                <option>Food & Dining</option><option>Shopping</option><option>Travel</option>
+                <option>Entertainment</option><option>Groceries</option><option>Electronics</option>
+                <option>Rent</option><option>Utilities</option><option>Health & Medical</option>
+                <option>Insurance</option><option>Fuel</option><option>Education & Classes</option>
+                <option>Fees & Charges</option><option>Wallet Load</option><option>Miscellaneous</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Tag</label>
+              <select id="filter-tag">
+                <option value="">All Tags</option>
+                <option>SmartBuy</option><option>iShop</option><option>VERNOST</option>
+                <option>Grab Deals</option><option>AEP Ineligible</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Description</label>
+              <input type="text" id="filter-description" placeholder="Search...">
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button id="clear-filter-btn" class="btn btn-secondary btn-sm">Clear</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table class="data-table txn-table">
@@ -169,18 +218,13 @@
             </select>
           </div>
         </div>
-        <div class="form-row two-col">
-          <div>
-            <label>Statement Period</label>
-            <input type="text" id="txn-statement-period" readonly>
-          </div>
-          <div class="reimbursable-col">
-            <label>Reimbursable</label>
-            <label class="toggle-wrap">
-              <input type="checkbox" id="txn-reimbursable">
-              <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            </label>
-          </div>
+        <input type="hidden" id="txn-statement-period">
+        <div class="form-row reimbursable-row">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="txn-reimbursable">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+          <span class="reimbursable-label">Reimbursable</span>
         </div>
         <div class="form-row">
           <label>Notes</label>

@@ -8,6 +8,12 @@ let allLoaded = false;
 let currentFilter = { card: '', category: '' };
 let modalCardsData = {};
 let stmtListenersAttached = false;
+let activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
+let filterPanelInitialized = false;
+
+function hasActiveFilters() {
+  return Object.values(activeFilters).some(v => v !== '');
+}
 
 function computeStatementPeriod(dateStr, cutoffDay) {
   if (!dateStr || !cutoffDay) return '';
@@ -36,6 +42,16 @@ function ensureStmtListeners() {
 }
 
 export async function loadTransactions(reset = false) {
+  if (!filterPanelInitialized) {
+    await initFilterPanel();
+    filterPanelInitialized = true;
+  }
+
+  if (hasActiveFilters()) {
+    await loadFilteredTransactions();
+    return;
+  }
+
   if (reset) {
     lastVisible = null;
     allLoaded = false;
@@ -179,6 +195,78 @@ export async function deleteTransaction(id) {
   if (!confirm('Delete this transaction?')) return;
   await deleteDoc(doc(db, 'transactions', id));
   loadTransactions(true);
+}
+
+async function loadFilteredTransactions() {
+  const list = document.getElementById('transactions-list');
+  list.innerHTML = '';
+  document.getElementById('load-more-btn').style.display = 'none';
+
+  const constraints = [orderBy('date', 'desc')];
+  if (activeFilters.dateFrom) {
+    constraints.push(where('date', '>=', Timestamp.fromDate(new Date(activeFilters.dateFrom + 'T00:00:00'))));
+  }
+  if (activeFilters.dateTo) {
+    constraints.push(where('date', '<=', Timestamp.fromDate(new Date(activeFilters.dateTo + 'T23:59:59'))));
+  }
+
+  const snap = await getDocs(query(collection(db, 'transactions'), ...constraints));
+  let txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  if (activeFilters.card) txns = txns.filter(t => t.card === activeFilters.card);
+  if (activeFilters.category) txns = txns.filter(t => t.category === activeFilters.category);
+  if (activeFilters.tag) txns = txns.filter(t => t.transactionTag === activeFilters.tag);
+  if (activeFilters.description) txns = txns.filter(t => (t.description || '').toLowerCase().includes(activeFilters.description));
+
+  renderTransactions(txns, true);
+}
+
+export function toggleFilterPanel() {
+  const panel = document.getElementById('filter-panel');
+  const btn = document.getElementById('filter-btn');
+  const isHidden = panel.classList.toggle('hidden');
+  if (isHidden && !hasActiveFilters()) btn.classList.remove('filter-active');
+}
+
+export function applyFilters() {
+  activeFilters = {
+    dateFrom: document.getElementById('filter-date-from').value,
+    dateTo: document.getElementById('filter-date-to').value,
+    card: document.getElementById('filter-card').value,
+    category: document.getElementById('filter-category').value,
+    tag: document.getElementById('filter-tag').value,
+    description: document.getElementById('filter-description').value.toLowerCase().trim(),
+  };
+  const hasFilter = hasActiveFilters();
+  document.getElementById('filter-btn').classList.toggle('filter-active', hasFilter);
+  if (hasFilter) {
+    loadFilteredTransactions();
+  } else {
+    loadTransactions(true);
+  }
+}
+
+export function clearFilters() {
+  activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
+  document.getElementById('filter-card').value = '';
+  document.getElementById('filter-category').value = '';
+  document.getElementById('filter-tag').value = '';
+  document.getElementById('filter-description').value = '';
+  document.getElementById('filter-btn').classList.remove('filter-active');
+  loadTransactions(true);
+}
+
+async function initFilterPanel() {
+  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+  const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
+  const select = document.getElementById('filter-card');
+  Object.keys(cardsData).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    select.appendChild(opt);
+  });
 }
 
 export function closeTransactionModal() {

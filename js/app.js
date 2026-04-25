@@ -5,7 +5,7 @@ import { loadDashboard } from './dashboard.js';
 import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted } from './voucher-trades.js';
 import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
-import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal } from './settings.js';
+import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
 
 // Expose handlers to HTML onclick attributes
 window.editTransaction = openEditTransaction;
@@ -14,8 +14,10 @@ window.openMarkTradedModal = openMarkTradedModal;
 window.openEditTradeModal = openEditTradeModal;
 window.openEditRewardModal = openEditRewardModal;
 window.deleteReward = deleteReward;
-window.openAddCardModal = openAddCardModal;
+window.openAddCardModal  = openAddCardModal;
 window.openEditCardModal = openEditCardModal;
+window.openAddAddOnModal = openAddAddOnModal;
+window.deleteAddOnCard   = deleteAddOnCard;
 
 let activeTab = 'dashboard';
 
@@ -86,6 +88,8 @@ document.getElementById('cancel-reward-btn').addEventListener('click', closeRewa
 // Settings
 document.getElementById('save-card-btn').addEventListener('click', saveCard);
 document.getElementById('cancel-card-btn').addEventListener('click', closeCardModal);
+document.getElementById('save-addon-btn').addEventListener('click', saveAddOnCard);
+document.getElementById('cancel-addon-btn').addEventListener('click', closeAddOnModal);
 
 // Close modals on backdrop click or Escape key
 document.querySelectorAll('.modal-backdrop').forEach(el => {

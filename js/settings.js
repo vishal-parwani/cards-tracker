@@ -1,8 +1,8 @@
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 
-// Module-level cache so edit modal can look up card by name
 let _cardsCache = {};
+let _addonCache = {};
 
 // Normalize old flat format (integer) to new object format
 function normalizeCard(name, value) {
@@ -24,13 +24,17 @@ export async function loadSettings() {
   const container = document.getElementById('settings-content');
   container.innerHTML = '<p class="loading">Loading...</p>';
   try {
-    const snap = await getDoc(doc(db, 'config', 'cards'));
-    const raw = snap.exists() ? snap.data() : {};
+    const [cardsSnap, addonSnap] = await Promise.all([
+      getDoc(doc(db, 'config', 'cards')),
+      getDoc(doc(db, 'config', 'addOnCards')),
+    ]);
+    const raw = cardsSnap.exists() ? cardsSnap.data() : {};
     const cards = Object.entries(raw)
       .map(([name, val]) => normalizeCard(name, val))
       .sort((a, b) => a.name.localeCompare(b.name));
     _cardsCache = {};
     cards.forEach(c => (_cardsCache[c.name] = c));
+    _addonCache = addonSnap.exists() ? (addonSnap.data() || {}) : {};
     renderSettings(cards);
   } catch (e) {
     container.innerHTML = `<p class="error">Error: ${e.message}</p>`;
@@ -38,6 +42,7 @@ export async function loadSettings() {
 }
 
 function renderSettings(cards) {
+  const addonEntries = Object.entries(_addonCache);
   const container = document.getElementById('settings-content');
   container.innerHTML = `
     <section class="section">
@@ -61,6 +66,26 @@ function renderSettings(cards) {
             <button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${card.name.replace(/'/g, "\\'")}')">Edit</button>
           </div>
         `).join('')}
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Add-on Cards</h2>
+        <button class="btn btn-primary btn-sm" onclick="window.openAddAddOnModal()">+ Add</button>
+      </div>
+      <p class="settings-hint">Add-on card numbers that should be recorded under a main card. Used by the processor to resolve transactions automatically.</p>
+      <div class="cards-settings-list" style="margin-top:10px">
+        ${addonEntries.length === 0
+          ? '<p class="empty" style="padding:6px 0">No add-on cards configured.</p>'
+          : addonEntries.map(([last4, mainCard]) => `
+              <div class="settings-card">
+                <div class="settings-card-info">
+                  <span class="card-name">••${last4}</span>
+                  <span class="settings-detail-small">→ ${mainCard}</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="window.deleteAddOnCard('${last4}')">Remove</button>
+              </div>
+            `).join('')}
       </div>
     </section>
   `;
@@ -142,4 +167,44 @@ export async function saveCard() {
 
 export function closeCardModal() {
   document.getElementById('card-modal').classList.add('hidden');
+}
+
+// ── Add-on card modal ─────────────────────────────────────────────
+
+export function openAddAddOnModal() {
+  const select = document.getElementById('addon-main-card');
+  select.innerHTML = Object.keys(_cardsCache)
+    .sort()
+    .map(name => `<option value="${name}">${name}</option>`)
+    .join('');
+  document.getElementById('addon-last4').value = '';
+  document.getElementById('addon-modal').classList.remove('hidden');
+}
+
+export async function saveAddOnCard() {
+  const last4    = document.getElementById('addon-last4').value.trim();
+  const mainCard = document.getElementById('addon-main-card').value;
+  if (!/^\d{4}$/.test(last4)) { alert('Enter exactly 4 digits.'); return; }
+  if (!mainCard) { alert('Select a main card.'); return; }
+
+  const ref  = doc(db, 'config', 'addOnCards');
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() || {}) : {};
+  await setDoc(ref, { ...data, [last4]: mainCard });
+  closeAddOnModal();
+  loadSettings();
+}
+
+export async function deleteAddOnCard(last4) {
+  if (!confirm(`Remove add-on card ••${last4}?`)) return;
+  const ref  = doc(db, 'config', 'addOnCards');
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() || {}) : {};
+  delete data[last4];
+  await setDoc(ref, data);
+  loadSettings();
+}
+
+export function closeAddOnModal() {
+  document.getElementById('addon-modal').classList.add('hidden');
 }

@@ -409,6 +409,30 @@
     </div>
   </div>
 
+  <!-- Modal: Add Add-on Card -->
+  <div id="addon-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Add Add-on Card</h3>
+        <button class="modal-close" id="cancel-addon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Last 4 Digits</label>
+          <input type="text" id="addon-last4" maxlength="4" placeholder="e.g. 2082">
+        </div>
+        <div class="form-row">
+          <label>Main Card</label>
+          <select id="addon-main-card"></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-addon-btn-2" class="btn btn-secondary" onclick="document.getElementById('addon-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-addon-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

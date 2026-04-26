@@ -15,6 +15,7 @@ function normalizeCard(name, value) {
     billPaymentDate: value.billPaymentDate  ?? null,
     bank:            value.bank            || '',
     last4:           value.last4           || '',
+    pdfPassword:     value.pdfPassword     || '',
     active:          value.active          !== false,
     dateHistory:     value.dateHistory     || [],
   };
@@ -97,6 +98,7 @@ export function openAddCardModal() {
   document.getElementById('card-name-input').value = '';
   document.getElementById('card-bank-input').value = '';
   document.getElementById('card-last4-input').value = '';
+  document.getElementById('card-pdf-password-input').value = '';
   document.getElementById('card-cutoff-input').value = '';
   document.getElementById('card-bill-input').value = '';
   document.getElementById('card-active-input').checked = true;
@@ -111,6 +113,7 @@ export function openEditCardModal(name) {
   document.getElementById('card-name-input').value = card.name;
   document.getElementById('card-bank-input').value = card.bank || '';
   document.getElementById('card-last4-input').value = card.last4 || '';
+  document.getElementById('card-pdf-password-input').value = card.pdfPassword || '';
   document.getElementById('card-cutoff-input').value = card.statementDate || '';
   document.getElementById('card-bill-input').value = card.billPaymentDate || '';
   document.getElementById('card-active-input').checked = card.active !== false;
@@ -122,6 +125,7 @@ export async function saveCard() {
   const newName         = document.getElementById('card-name-input').value.trim();
   const bank            = document.getElementById('card-bank-input').value.trim();
   const last4           = document.getElementById('card-last4-input').value.trim();
+  const pdfPassword     = document.getElementById('card-pdf-password-input').value.trim();
   const statementDate   = parseInt(document.getElementById('card-cutoff-input').value) || null;
   const billPaymentDate = parseInt(document.getElementById('card-bill-input').value) || null;
   const active          = document.getElementById('card-active-input').checked;
@@ -152,7 +156,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, active, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, active, dateHistory };
 
   // Remove old key if name changed
   if (originalName && originalName !== newName) {

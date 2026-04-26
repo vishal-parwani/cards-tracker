@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
+import { loadCharts } from './charts.js';
 
 export async function loadDashboard() {
   const container = document.getElementById('dashboard-content');
@@ -37,7 +38,31 @@ export async function loadDashboard() {
           ${renderEpmIshop(cardResults)}
         </div>
       </section>
+      <section class="section">
+        <h2 class="section-title">Charts</h2>
+        <div class="chart-card chart-card-wide">
+          <div class="chart-title">Monthly Spend by Card</div>
+          <div class="chart-canvas-wrap chart-canvas-bar">
+            <canvas id="chart-monthly"></canvas>
+          </div>
+        </div>
+        <div class="charts-grid-donuts">
+          <div class="chart-card">
+            <div class="chart-title">Spend by Category — YTD</div>
+            <div class="chart-canvas-wrap chart-canvas-donut">
+              <canvas id="chart-cat-ytd"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">Spend by Category — MTD</div>
+            <div class="chart-canvas-wrap chart-canvas-donut">
+              <canvas id="chart-cat-mtd"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
     `;
+    loadCharts();
   } catch (e) {
     container.innerHTML = `<p class="error">Error loading dashboard: ${e.message}</p>`;
   }
@@ -81,11 +106,16 @@ async function loadCardData(card, monthStart) {
   let magnusSmartBuyPts = 0;
   let epmIshopPts = 0;
 
+  const AEP_EXCLUDED = new Set([
+    'Fees & Charges', 'Fuel', 'Government Services', 'Insurance',
+    'Utilities & Telecom', 'Shopping - Jewellery', 'Wallet Load',
+  ]);
+
   if (card.name === 'Magnus Burgundy') {
     mtdTxns.forEach(t => {
       if (t.type === 'debit') {
         magnusMonthlySpend += t.amount || 0;
-        if (t.category !== 'Rent' && t.category !== 'Fees & Charges' && t.transactionTag !== 'AEP Ineligible') {
+        if (!AEP_EXCLUDED.has(t.category) && t.category !== 'Rent' && t.transactionTag !== 'AEP Ineligible') {
           magnusAepEligible += t.amount || 0;
         }
       }

@@ -10,6 +10,50 @@ let modalCardsData = {};
 let stmtListenersAttached = false;
 let activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
 let filterPanelInitialized = false;
+let pointsManuallyEdited = false;
+
+const CARD_POINTS_RATES = {
+  'Magnus Burgundy': { rate: 12, per: 200 },
+  'Infinia':         { rate: 5,  per: 150 },
+  'ICICI EPM':       { rate: 6,  per: 200 },
+  'Times Black':     { rate: 2,  per: 100 },
+};
+const CARD_EXCLUDED_CATS = {
+  'Magnus Burgundy': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load', 'EMI']),
+  'Infinia':         new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load']),
+  'ICICI EPM':       new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
+  'Times Black':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
+};
+
+function autoComputePoints() {
+  if (pointsManuallyEdited) return;
+  const card     = document.getElementById('txn-card').value;
+  const amount   = parseFloat(document.getElementById('txn-amount').value) || 0;
+  const category = document.getElementById('txn-category').value;
+  const type     = document.getElementById('txn-type').value;
+  const el       = document.getElementById('txn-points');
+
+  if (type === 'credit') { el.value = 0; return; }
+  const excl = CARD_EXCLUDED_CATS[card];
+  if (excl && excl.has(category)) { el.value = 0; return; }
+  const r = CARD_POINTS_RATES[card];
+  el.value = r ? Math.floor(amount / r.per) * r.rate : 0;
+}
+
+window.showDescPopover = function(e, cell) {
+  document.querySelector('.desc-popover')?.remove();
+  if (cell.scrollWidth <= cell.clientWidth) return;
+  const pop = document.createElement('div');
+  pop.className = 'desc-popover';
+  pop.textContent = cell.textContent.trim();
+  document.body.appendChild(pop);
+  const rect = cell.getBoundingClientRect();
+  pop.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+  pop.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 360) + 'px';
+  const close = ev => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 0);
+  e.stopPropagation();
+};
 
 function hasActiveFilters() {
   return Object.values(activeFilters).some(v => v !== '');
@@ -38,6 +82,11 @@ function ensureStmtListeners() {
   if (stmtListenersAttached) return;
   document.getElementById('txn-date').addEventListener('change', updateStatementPeriod);
   document.getElementById('txn-card').addEventListener('change', updateStatementPeriod);
+  document.getElementById('txn-amount').addEventListener('input', autoComputePoints);
+  document.getElementById('txn-card').addEventListener('change', autoComputePoints);
+  document.getElementById('txn-category').addEventListener('change', autoComputePoints);
+  document.getElementById('txn-type').addEventListener('change', autoComputePoints);
+  document.getElementById('txn-points').addEventListener('input', () => { pointsManuallyEdited = true; });
   stmtListenersAttached = true;
 }
 
@@ -100,7 +149,7 @@ function renderTransactions(txns, replace = false) {
     <tr data-id="${t.id}">
       <td>${formatDate(t.date)}</td>
       <td>${t.card || ''}</td>
-      <td class="desc-cell">${t.description || ''}</td>
+      <td class="desc-cell" onclick="window.showDescPopover(event, this)">${t.description || ''}</td>
       <td>${t.category || ''}</td>
       <td class="amount-cell ${t.type === 'credit' ? 'credit' : ''}">${t.type === 'credit' ? '-' : ''}${formatCurrency(t.amount)}</td>
       <td>${t.pointsEarned || 0}</td>
@@ -149,6 +198,7 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-reimbursable').checked = txn?.reimbursable || false;
   document.getElementById('txn-notes').value = txn?.notes || '';
 
+  pointsManuallyEdited = false;
   ensureStmtListeners();
   updateStatementPeriod();
 

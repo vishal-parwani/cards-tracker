@@ -223,7 +223,7 @@ body {
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: #fdf5ee; }
-.desc-cell    { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc-cell    { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
 .actions-cell { white-space: nowrap; text-align: right; }
@@ -232,12 +232,30 @@ body {
 .pending-row  { background: #fdf8f0; }
 
 /* Transactions table column widths */
+.txn-table td { white-space: nowrap; }
 .txn-table th:nth-child(1), .txn-table td:nth-child(1) { width: 110px; }
-.txn-table th:nth-child(2), .txn-table td:nth-child(2) { width: 100px; }
+.txn-table th:nth-child(2), .txn-table td:nth-child(2) { width: 140px; }
 .txn-table th:nth-child(5), .txn-table td:nth-child(5) { width: 115px; }
 .txn-table th:nth-child(6), .txn-table td:nth-child(6) { width: 90px; text-align: right; }
 .txn-table th:nth-child(7), .txn-table td:nth-child(7) { width: 95px; }
 .txn-table th:last-child,   .txn-table td:last-child   { width: 64px; }
+
+/* Description popover */
+.desc-popover {
+  position: absolute;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  box-shadow: 0 4px 16px rgba(92,61,46,0.15);
+  max-width: 340px;
+  word-wrap: break-word;
+  z-index: 1000;
+  line-height: 1.5;
+}
 
 /* ── Filter Panel ── */
 .btn-icon-btn { padding: 8px 10px; }

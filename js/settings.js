@@ -16,6 +16,7 @@ function normalizeCard(name, value) {
     bank:            value.bank            || '',
     last4:           value.last4           || '',
     pdfPassword:     value.pdfPassword     || '',
+    forexRate:       value.forexRate       ?? null,
     active:          value.active          !== false,
     dateHistory:     value.dateHistory     || [],
   };
@@ -61,6 +62,8 @@ function renderSettings(cards) {
                 Statement: <strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong>
                 &nbsp;·&nbsp;
                 Bill due: <strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong>
+                &nbsp;·&nbsp;
+                Forex: <strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong>
                 ${!card.active ? '&nbsp;·&nbsp;<em>Inactive</em>' : ''}
               </span>
             </div>
@@ -101,6 +104,7 @@ export function openAddCardModal() {
   document.getElementById('card-pdf-password-input').value = '';
   document.getElementById('card-cutoff-input').value = '';
   document.getElementById('card-bill-input').value = '';
+  document.getElementById('card-forex-input').value = '';
   document.getElementById('card-active-input').checked = true;
   document.getElementById('card-modal').classList.remove('hidden');
 }
@@ -116,6 +120,7 @@ export function openEditCardModal(name) {
   document.getElementById('card-pdf-password-input').value = card.pdfPassword || '';
   document.getElementById('card-cutoff-input').value = card.statementDate || '';
   document.getElementById('card-bill-input').value = card.billPaymentDate || '';
+  document.getElementById('card-forex-input').value = card.forexRate != null ? (card.forexRate * 100).toFixed(1) : '';
   document.getElementById('card-active-input').checked = card.active !== false;
   document.getElementById('card-modal').classList.remove('hidden');
 }
@@ -128,11 +133,14 @@ export async function saveCard() {
   const pdfPassword     = document.getElementById('card-pdf-password-input').value.trim();
   const statementDate   = parseInt(document.getElementById('card-cutoff-input').value) || null;
   const billPaymentDate = parseInt(document.getElementById('card-bill-input').value) || null;
+  const forexRawInput   = document.getElementById('card-forex-input').value.trim();
+  const forexRate       = forexRawInput !== '' ? parseFloat(forexRawInput) / 100 : null;
   const active          = document.getElementById('card-active-input').checked;
 
   if (!newName) { alert('Card name is required.'); return; }
   if (statementDate && (statementDate < 1 || statementDate > 31)) { alert('Statement date must be 1–31.'); return; }
   if (billPaymentDate && (billPaymentDate < 1 || billPaymentDate > 31)) { alert('Bill payment date must be 1–31.'); return; }
+  if (forexRate !== null && (forexRate < 0 || forexRate > 1)) { alert('Forex rate must be between 0% and 100%.'); return; }
 
   const cardsRef = doc(db, 'config', 'cards');
   const snap = await getDoc(cardsRef);
@@ -156,7 +164,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, active, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, dateHistory };
 
   // Remove old key if name changed
   if (originalName && originalName !== newName) {

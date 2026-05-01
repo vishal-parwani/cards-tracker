@@ -12,13 +12,15 @@ This is the **front-end UI** for Vishal's personal credit card spend tracker. A 
 
 ## What this repo is NOT
 
-The **server-side automations** — daily Gmail/PDF processor, Cloud Function for iOS Shortcut SMS ingestion, Telegram notification PNG generator — all live in a **separate repo at:**
+The **server-side automations** — daily Gmail/PDF processor, Cloud Function for iOS Shortcut SMS ingestion, Telegram notification PNG generator — all live in a **sibling folder:**
 
 ```
-/Users/vishal/Documents/Personal/AI Oversight/Automations/PythonAnywhere/cards-processor/
+~/code/cards/processor/
 ```
 
-GitHub: `vishal-parwani/cards-processor`. Read its [CLAUDE.md](../Automations/PythonAnywhere/cards-processor/CLAUDE.md) for status of that side.
+GitHub: `vishal-parwani/cards-processor`. Read its [CLAUDE.md](../processor/CLAUDE.md) for status of that side.
+
+The two repos sit side-by-side under `~/code/cards/`; there is also a master `~/code/cards/CLAUDE.md` that points at both.
 
 ## Running locally
 
@@ -112,16 +114,16 @@ If card names in Firestore change, these widgets silently disappear (`find()` re
 
 ## Cross-machine setup
 
-Vishal works from **two machines** (Mac mini + MacBook Air). Both have a clone of this repo at the same path. Process for switching machines:
+Vishal works from **two machines** (Mac mini + MacBook Air). Both should have clones at `~/code/cards/tracker/` and `~/code/cards/processor/`. Process for switching machines:
 
-1. `git pull` on the machine you're starting at.
+1. `git pull` in **both** repos on the machine you're starting at.
 2. Read this file's **STATUS** section to learn what was last shipped.
-3. Read `cards-processor/CLAUDE.md` for the backend side.
+3. Read `~/code/cards/processor/CLAUDE.md` for the backend side.
 4. Per-machine auto-memory at `~/.claude/projects/.../memory/` may exist on one machine and not the other — it's complementary, not authoritative. **This file (in git) is the source of truth.**
 
 ### Git auth
 
-The `cards-tracker` remote URL uses plain HTTPS — auth is handled by macOS Keychain or GitHub Desktop. There is **no embedded token** in the remote URL. If you ever see a remote URL containing `ghp_...`, strip it immediately (it leaks credentials in shell history).
+The remote URL uses **SSH** (`git@github.com:vishal-parwani/...`). SSH key at `~/.ssh/id_ed25519` is registered with GitHub. No tokens involved. If you ever see a remote URL containing `ghp_...`, strip it immediately (it leaks credentials in shell history).
 
 ---
 

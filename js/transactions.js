@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency, formatDate, formatDateInput, getCurrentMonthStart, getMonthStr, CATEGORIES, TRANSACTION_TAGS } from './utils.js';
+import { formatCurrency, formatDate, formatDateTime, formatDateInput, getCurrentMonthStart, getMonthStr, CATEGORIES, TRANSACTION_TAGS } from './utils.js';
 
 const PAGE_SIZE = 50;
 let lastVisible = null;
@@ -147,7 +147,7 @@ function renderTransactions(txns, replace = false) {
 
   const rows = txns.map(t => `
     <tr data-id="${t.id}">
-      <td>${formatDate(t.date)}</td>
+      <td>${formatDateTime(t.date)}</td>
       <td>${t.card || ''}</td>
       <td class="desc-cell" onclick="window.showDescPopover(event, this)">${t.description || ''}</td>
       <td>${t.category || ''}</td>

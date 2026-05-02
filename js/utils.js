@@ -9,6 +9,21 @@ export function formatDate(date) {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// "26 May, 10:44 PM" — appends time when the timestamp has a non-midnight
+// component (i.e. came from time-aware SMS/email parsing). Older txns stored
+// as IST midnight render as plain "26 May 2026" via formatDate above.
+export function formatDateTime(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : date.toDate();
+  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0;
+  if (!hasTime) return formatDate(d);
+  const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  const timePart = d.toLocaleTimeString('en-IN', {
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+  return `${datePart}, ${timePart}`;
+}
+
 export function formatDateInput(date) {
   if (!date) return '';
   const d = date instanceof Date ? date : date.toDate();

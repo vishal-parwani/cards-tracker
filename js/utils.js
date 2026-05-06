@@ -69,3 +69,21 @@ export const CATEGORIES = [
 export const TRANSACTION_TAGS = [
   '', 'SmartBuy', 'iShop', 'VERNOST', 'Grab Deals', 'AEP Ineligible'
 ];
+
+// Voucher-trade helpers (parent/child schema). Children store haircut in ₹
+// (not %), distinguished from legacy flat docs by presence of `parentId`.
+export function computeChildHaircutPnl(purchaseAmount, cashReceived) {
+  const haircut = (purchaseAmount || 0) - (cashReceived || 0);
+  return { haircut, netPnl: -haircut };
+}
+
+export function aggregateChildStatus(children) {
+  if (!children || children.length === 0) return 'Pending';
+  return children.every(c => c.status === 'Traded') ? 'Traded' : 'Pending';
+}
+
+export function sumChildHaircut(children) {
+  return (children || [])
+    .filter(c => c.status === 'Traded')
+    .reduce((s, c) => s + (c.haircut || 0), 0);
+}

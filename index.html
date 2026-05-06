@@ -231,10 +231,50 @@
           <label>Notes</label>
           <input type="text" id="txn-notes" placeholder="Optional">
         </div>
+        <div id="txn-vt-section" class="form-row vt-section"></div>
       </div>
       <div class="modal-footer">
         <button id="cancel-txn-btn-2" class="btn btn-secondary" onclick="document.getElementById('transaction-modal').classList.add('hidden')">Cancel</button>
         <button id="save-txn-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: VT Splits (convert debit to voucher trade) -->
+  <div id="vt-split-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Convert to Voucher Trade</h3>
+        <button class="modal-close" onclick="document.getElementById('vt-split-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="vt-split-source-txn-id">
+        <p class="form-hint">Split this debit into one or more voucher trades. Each split gets its own description and amount.</p>
+        <div id="vt-split-rows"></div>
+        <button id="vt-split-add-row-btn" class="btn btn-secondary btn-sm">+ Add split</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('vt-split-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-vt-split-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Apply credit to VT (pick children to settle) -->
+  <div id="vt-apply-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Apply Credit to Voucher Trade</h3>
+        <button class="modal-close" onclick="document.getElementById('vt-apply-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="vt-apply-source-txn-id">
+        <p class="form-hint">Pick the pending voucher trade splits this credit settles. Enter the cash received against each.</p>
+        <div id="vt-apply-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('vt-apply-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-vt-apply-btn" class="btn btn-primary">Save</button>
       </div>
     </div>
   </div>
@@ -300,6 +340,61 @@
       <div class="modal-footer">
         <button id="cancel-mark-traded-btn-2" class="btn btn-secondary" onclick="document.getElementById('mark-traded-modal').classList.add('hidden')">Cancel</button>
         <button id="save-mark-traded-btn" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Manage Splits (parent edit) -->
+  <div id="edit-splits-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Manage Splits</h3>
+        <button class="modal-close" onclick="document.getElementById('edit-splits-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-splits-parent-id">
+        <p id="edit-splits-summary" class="trade-desc"></p>
+        <div id="edit-splits-rows"></div>
+        <button id="edit-splits-add-row-btn" class="btn btn-secondary btn-sm">+ Add split</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('edit-splits-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-edit-splits-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settle Voucher Trade (child) -->
+  <div id="settle-vt-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3 id="settle-vt-title">Settle Voucher Trade</h3>
+        <button class="modal-close" onclick="document.getElementById('settle-vt-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="settle-vt-id">
+        <p id="settle-vt-summary" class="trade-desc"></p>
+        <div class="form-row">
+          <label>Link to credit txn <span class="form-hint">(optional — autofills date/cash)</span></label>
+          <select id="settle-vt-credit-link">
+            <option value="">— Cash settlement (no credit txn) —</option>
+          </select>
+        </div>
+        <div class="form-row two-col">
+          <div>
+            <label>Trade Date</label>
+            <input type="date" id="settle-vt-trade-date" required>
+          </div>
+          <div>
+            <label>Cash Received (₹)</label>
+            <input type="number" id="settle-vt-cash" step="0.01" min="0" required>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="unsettle-vt-btn" class="btn btn-secondary hidden">Unsettle</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('settle-vt-modal').classList.add('hidden')">Cancel</button>
+        <button id="save-settle-vt-btn" class="btn btn-primary">Save</button>
       </div>
     </div>
   </div>

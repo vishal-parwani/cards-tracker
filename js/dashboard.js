@@ -122,10 +122,12 @@ async function loadCardData(card, monthStart) {
     });
   }
 
+  // SmartBuy / iShop caps reset on the calendar month.
+  // Accel rate = (total multiplier - 1) × base rate, applied per-txn.
   if (card.name === 'Infinia') {
     mtdTxns.forEach(t => {
       if (t.type === 'debit' && t.transactionTag === 'SmartBuy') {
-        magnusSmartBuyPts += Math.floor((t.amount || 0) / 150) * 4; // accel pts only (4x)
+        magnusSmartBuyPts += Math.floor((t.amount || 0) / 150) * 20; // 4× accel of 5pts/₹150
       }
     });
   }
@@ -133,7 +135,7 @@ async function loadCardData(card, monthStart) {
   if (card.name === 'ICICI EPM') {
     mtdTxns.forEach(t => {
       if (t.type === 'debit' && t.transactionTag === 'iShop') {
-        epmIshopPts += Math.floor((t.amount || 0) / 200) * 36;
+        epmIshopPts += Math.floor((t.amount || 0) / 200) * 30; // 5× accel of 6pts/₹200
       }
     });
   }
@@ -245,8 +247,8 @@ function renderInfiniaSmartBuy(cardResults) {
   const accelPts = infinia.magnusSmartBuyPts;
   const cap = 15000;
   const remainingPts = Math.max(0, cap - accelPts);
-  // Each ₹150 SmartBuy spend earns 4 accel pts → remaining spend = (remainingPts / 4) * 150
-  const remainingSpend = Math.ceil((remainingPts / 4) * 150);
+  // ₹150 SmartBuy spend earns 20 accel pts → remaining spend = (remainingPts / 20) * 150
+  const remainingSpend = Math.ceil((remainingPts / 20) * 150);
   const pct = Math.min(100, (accelPts / cap) * 100).toFixed(0);
 
   return `
@@ -274,8 +276,8 @@ function renderEpmIshop(cardResults) {
   const pts = epm.epmIshopPts;
   const cap = 18000;
   const remainingPts = Math.max(0, cap - pts);
-  // Each ₹200 iShop spend earns 36 pts → remaining spend = (remainingPts / 36) * 200
-  const remainingSpend = Math.ceil((remainingPts / 36) * 200);
+  // ₹200 iShop spend earns 30 accel pts → remaining spend = (remainingPts / 30) * 200
+  const remainingSpend = Math.ceil((remainingPts / 30) * 200);
   const pct = Math.min(100, (pts / cap) * 100).toFixed(0);
 
   return `

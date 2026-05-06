@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency, formatDate, formatDateTime, formatDateInput, getCurrentMonthStart, getMonthStr, CATEGORIES, TRANSACTION_TAGS } from './utils.js';
+import { formatCurrency, formatDate, formatDateTime, formatDateInput, getCurrentMonthStart, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus } from './utils.js';
 
 const PAGE_SIZE = 50;
 let lastVisible = null;
@@ -131,12 +131,41 @@ export async function loadTransactions(reset = false) {
   if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1];
 
   const txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  renderTransactions(txns, !lastVisible || snap.docs.length === 0);
+  const vtChildMap = await buildVtEnrichment(txns);
+  renderTransactions(txns, !lastVisible || snap.docs.length === 0, vtChildMap);
 
   document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
 }
 
-function renderTransactions(txns, replace = false) {
+async function buildVtEnrichment(txns) {
+  const parentIds = [...new Set(txns.filter(t => t.voucherTradeParentId).map(t => t.voucherTradeParentId))];
+  const childMap = new Map();
+  for (let i = 0; i < parentIds.length; i += 30) {
+    const chunk = parentIds.slice(i, i + 30);
+    const snap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', 'in', chunk)));
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (!childMap.has(data.parentId)) childMap.set(data.parentId, []);
+      childMap.get(data.parentId).push({ id: d.id, ...data });
+    });
+  }
+  return childMap;
+}
+
+function vtChipFor(t, vtChildMap) {
+  if (t.voucherTradeParentId) {
+    const children = vtChildMap.get(t.voucherTradeParentId) || [];
+    const status = aggregateChildStatus(children);
+    if (status === 'Pending') return `<span class="vt-chip vt-chip-pending">VT pending</span>`;
+    return `<span class="vt-chip vt-chip-traded">Haircut ${formatCurrency(sumChildHaircut(children))}</span>`;
+  }
+  if ((t.voucherTradeChildIds || []).length > 0) {
+    return `<span class="vt-chip vt-chip-credit">Settles VT ×${t.voucherTradeChildIds.length}</span>`;
+  }
+  return '';
+}
+
+function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
   const list = document.getElementById('transactions-list');
   if (replace) list.innerHTML = '';
 
@@ -145,21 +174,27 @@ function renderTransactions(txns, replace = false) {
     return;
   }
 
-  const rows = txns.map(t => `
+  const rows = txns.map(t => {
+    const chip = vtChipFor(t, vtChildMap);
+    return `
     <tr data-id="${t.id}">
       <td>${formatDateTime(t.date)}</td>
       <td>${t.card || ''}</td>
-      <td class="desc-cell" onclick="window.showDescPopover(event, this)">${t.description || ''}</td>
+      <td class="desc-cell">
+        <div class="desc-text" onclick="window.showDescPopover(event, this)">${t.description || ''}</div>
+        ${chip ? `<div class="desc-chip-row">${chip}</div>` : ''}
+      </td>
       <td>${t.category || ''}</td>
       <td class="amount-cell ${t.type === 'credit' ? 'credit' : ''}">${t.type === 'credit' ? '-' : ''}${formatCurrency(t.amount)}</td>
-      <td>${t.pointsEarned || 0}</td>
+      <td>${(t.pointsEarned || 0).toLocaleString('en-IN')}</td>
       <td>${t.transactionTag || ''}</td>
       <td class="actions-cell">
         <button class="btn-icon" onclick="window.editTransaction('${t.id}')">✏️</button>
         <button class="btn-icon" onclick="window.deleteTransaction('${t.id}')">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   list.insertAdjacentHTML('beforeend', rows);
 }
@@ -202,7 +237,319 @@ function showTransactionModal(txn, cardsData) {
   ensureStmtListeners();
   updateStatementPeriod();
 
+  renderVtSection(txn);
+
   document.getElementById('transaction-modal').classList.remove('hidden');
+}
+
+// ─── VT section inside the transaction modal ─────────────────────────────────
+
+let vtSectionListenersAttached = false;
+function ensureVtSectionListeners() {
+  if (vtSectionListenersAttached) return;
+  document.getElementById('txn-type').addEventListener('change', () => {
+    const txnId = document.getElementById('txn-id').value;
+    // Re-render with current DOM state; we don't have the full txn obj here.
+    // Reload the txn from Firestore if it was an edit so we keep linkage.
+    if (txnId) {
+      getDoc(doc(db, 'transactions', txnId)).then(s => {
+        if (s.exists()) renderVtSection({ id: txnId, ...s.data() });
+        else renderVtSection(null);
+      });
+    } else {
+      renderVtSection(null);
+    }
+  });
+  vtSectionListenersAttached = true;
+}
+
+async function renderVtSection(txn) {
+  ensureVtSectionListeners();
+  const section = document.getElementById('txn-vt-section');
+  const type = document.getElementById('txn-type').value;
+  const isEdit = !!txn?.id;
+
+  if (!isEdit) {
+    section.innerHTML = `<div class="vt-section-inner muted">Save the transaction first to convert it to a voucher trade.</div>`;
+    return;
+  }
+
+  if (type === 'debit') {
+    if (txn.voucherTradeParentId) {
+      // Already linked debit — show summary + unlink.
+      const parentSnap = await getDoc(doc(db, 'voucherTrades', txn.voucherTradeParentId));
+      if (!parentSnap.exists()) {
+        section.innerHTML = `<div class="vt-section-inner muted">Linked voucher trade no longer exists. <button class="btn btn-sm btn-secondary" onclick="window.unlinkVtFromTxn('${txn.id}')">Clear link</button></div>`;
+        return;
+      }
+      const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', txn.voucherTradeParentId)));
+      const children = childSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const status = aggregateChildStatus(children);
+      const haircut = sumChildHaircut(children);
+      section.innerHTML = `
+        <div class="vt-section-inner">
+          <div class="vt-section-title">Voucher Trade <span class="status-badge ${status === 'Pending' ? 'badge-orange' : 'badge-green'}">${status}</span></div>
+          <ul class="vt-child-summary">
+            ${children.map(c => `
+              <li>
+                ${c.description || '(no description)'} — ${formatCurrency(c.purchaseAmount)}
+                ${c.status === 'Traded' ? `<span class="muted">→ ${formatCurrency(c.cashReceived)} (haircut ${formatCurrency(c.haircut)})</span>` : `<span class="muted">pending</span>`}
+              </li>
+            `).join('')}
+          </ul>
+          ${status === 'Traded' ? `<div class="vt-section-haircut">Total haircut: ${formatCurrency(haircut)}</div>` : ''}
+          <button type="button" class="btn btn-sm btn-secondary" onclick="window.unlinkVtFromTxn('${txn.id}')">Unlink Voucher Trade</button>
+        </div>
+      `;
+    } else {
+      section.innerHTML = `
+        <div class="vt-section-inner">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="window.openConvertToVtModal('${txn.id}')">Convert to Voucher Trade</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  if (type === 'credit') {
+    const linkedIds = txn.voucherTradeChildIds || [];
+    if (linkedIds.length > 0) {
+      // Fetch linked children (chunks of 30 for `in` queries).
+      const children = [];
+      for (let i = 0; i < linkedIds.length; i += 30) {
+        const chunk = linkedIds.slice(i, i + 30);
+        const snap = await getDocs(query(collection(db, 'voucherTrades'), where('__name__', 'in', chunk)));
+        snap.docs.forEach(d => children.push({ id: d.id, ...d.data() }));
+      }
+      section.innerHTML = `
+        <div class="vt-section-inner">
+          <div class="vt-section-title">Settles Voucher Trade${children.length === 1 ? '' : 's'}</div>
+          <ul class="vt-child-summary">
+            ${children.map(c => `
+              <li>
+                ${c.description || '(no description)'} — ${formatCurrency(c.purchaseAmount)}
+                <span class="muted">→ cash ${formatCurrency(c.cashReceived)}, haircut ${formatCurrency(c.haircut)}</span>
+                <button type="button" class="btn btn-sm btn-link" onclick="window.unlinkVtChildFromCredit('${txn.id}','${c.id}')">unlink</button>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+    } else {
+      section.innerHTML = `
+        <div class="vt-section-inner">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="window.openApplyToVtModal('${txn.id}')">Apply to Voucher Trade</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  section.innerHTML = '';
+}
+
+// ─── Convert-to-VT (debit) ───────────────────────────────────────────────────
+
+export async function openConvertToVtModal(txnId) {
+  const snap = await getDoc(doc(db, 'transactions', txnId));
+  if (!snap.exists()) return;
+  const t = snap.data();
+  document.getElementById('vt-split-source-txn-id').value = txnId;
+  const rows = document.getElementById('vt-split-rows');
+  rows.innerHTML = '';
+  appendSplitRow(t.description || '', t.amount || '');
+  document.getElementById('vt-split-modal').classList.remove('hidden');
+}
+
+function appendSplitRow(desc = '', amount = '') {
+  const rows = document.getElementById('vt-split-rows');
+  const idx = rows.children.length;
+  const row = document.createElement('div');
+  row.className = 'vt-split-row form-row two-col';
+  row.innerHTML = `
+    <div>
+      <label>${idx === 0 ? 'Description' : ''}</label>
+      <input type="text" class="vt-split-desc" value="${desc.replace(/"/g, '&quot;')}" placeholder="Voucher description">
+    </div>
+    <div class="vt-split-amount-wrap">
+      <label>${idx === 0 ? 'Amount (₹)' : ''}</label>
+      <div class="vt-split-amount-inline">
+        <input type="number" class="vt-split-amount" step="0.01" min="0" value="${amount}">
+        <button type="button" class="btn btn-sm btn-link vt-split-remove">✕</button>
+      </div>
+    </div>
+  `;
+  row.querySelector('.vt-split-remove').addEventListener('click', () => {
+    if (rows.children.length > 1) row.remove();
+  });
+  rows.appendChild(row);
+}
+
+export function addSplitRow() { appendSplitRow(); }
+
+export async function saveVtSplits() {
+  const txnId = document.getElementById('vt-split-source-txn-id').value;
+  const rows = [...document.querySelectorAll('#vt-split-rows .vt-split-row')];
+  const splits = rows.map(r => ({
+    description: r.querySelector('.vt-split-desc').value.trim(),
+    amount: parseFloat(r.querySelector('.vt-split-amount').value),
+  })).filter(s => !isNaN(s.amount));
+
+  if (splits.length === 0) { alert('Add at least one split with an amount.'); return; }
+
+  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
+  if (!txnSnap.exists()) return;
+  const t = txnSnap.data();
+
+  const splitTotal = splits.reduce((s, x) => s + x.amount, 0);
+  if (splitTotal > (t.amount || 0) + 0.01) {
+    alert(`Split total ${formatCurrency(splitTotal)} exceeds the source debit amount ${formatCurrency(t.amount)}.`);
+    return;
+  }
+
+  const batch = writeBatch(db);
+  const parentRef = doc(collection(db, 'voucherTrades'));
+  batch.set(parentRef, {
+    isParent: true,
+    purchaseDate: t.date,
+    card: t.card,
+    description: t.description || '',
+    purchaseAmount: t.amount,
+    pointsEarned: t.pointsEarned || 0,
+    purchaseTransactionId: txnId,
+  });
+  for (const s of splits) {
+    const childRef = doc(collection(db, 'voucherTrades'));
+    batch.set(childRef, {
+      parentId: parentRef.id,
+      purchaseDate: t.date,
+      card: t.card,
+      description: s.description,
+      purchaseAmount: s.amount,
+      status: 'Pending',
+    });
+  }
+  batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: parentRef.id });
+  await batch.commit();
+
+  document.getElementById('vt-split-modal').classList.add('hidden');
+  // Refresh the txn modal's VT section so it shows the new linkage.
+  renderVtSection({ id: txnId, ...t, voucherTradeParentId: parentRef.id });
+  loadTransactions(true);
+}
+
+export async function unlinkVtFromTxn(txnId) {
+  if (!confirm('Unlink and delete the voucher trade and all its splits?')) return;
+  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
+  if (!txnSnap.exists()) return;
+  const parentId = txnSnap.data().voucherTradeParentId;
+  if (!parentId) return;
+
+  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', parentId)));
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'voucherTrades', parentId));
+  childSnap.docs.forEach(c => batch.delete(c.ref));
+  batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: null });
+  await batch.commit();
+  renderVtSection({ id: txnId, ...txnSnap.data(), voucherTradeParentId: null });
+  loadTransactions(true);
+}
+
+// ─── Apply-to-VT (credit) ────────────────────────────────────────────────────
+
+export async function openApplyToVtModal(txnId) {
+  document.getElementById('vt-apply-source-txn-id').value = txnId;
+  const list = document.getElementById('vt-apply-list');
+  list.innerHTML = '<p class="loading">Loading pending voucher trades...</p>';
+  document.getElementById('vt-apply-modal').classList.remove('hidden');
+
+  // Load all VT children with status='Pending' across all cards.
+  const snap = await getDocs(query(collection(db, 'voucherTrades'), where('status', '==', 'Pending')));
+  const children = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(c => c.parentId)
+    .sort((a, b) => (b.purchaseDate?.seconds || 0) - (a.purchaseDate?.seconds || 0));
+
+  if (children.length === 0) {
+    list.innerHTML = '<p class="empty">No pending voucher trades to apply.</p>';
+    return;
+  }
+
+  list.innerHTML = children.map(c => `
+    <div class="vt-apply-row">
+      <label class="vt-apply-pick">
+        <input type="checkbox" class="vt-apply-check" data-id="${c.id}" data-amount="${c.purchaseAmount}">
+        <span>${formatDate(c.purchaseDate)} · ${c.card || ''} · ${c.description || '(no desc)'} · ${formatCurrency(c.purchaseAmount)}</span>
+      </label>
+      <input type="number" class="vt-apply-cash" data-id="${c.id}" step="0.01" min="0" placeholder="Cash received (₹)">
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.vt-apply-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const cashInput = list.querySelector(`.vt-apply-cash[data-id="${cb.dataset.id}"]`);
+      if (cb.checked && !cashInput.value) cashInput.value = cb.dataset.amount;
+    });
+  });
+}
+
+export async function saveVtApply() {
+  const txnId = document.getElementById('vt-apply-source-txn-id').value;
+  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
+  if (!txnSnap.exists()) return;
+  const t = txnSnap.data();
+
+  const checks = [...document.querySelectorAll('#vt-apply-list .vt-apply-check')].filter(c => c.checked);
+  if (checks.length === 0) { alert('Pick at least one voucher trade.'); return; }
+
+  const batch = writeBatch(db);
+  const linkedIds = [...(t.voucherTradeChildIds || [])];
+
+  for (const cb of checks) {
+    const id = cb.dataset.id;
+    const cashInput = document.querySelector(`#vt-apply-list .vt-apply-cash[data-id="${id}"]`);
+    const cash = parseFloat(cashInput.value);
+    const amount = parseFloat(cb.dataset.amount);
+    if (isNaN(cash)) { alert('Enter cash received for every checked split.'); return; }
+    const { haircut, netPnl } = computeChildHaircutPnl(amount, cash);
+    batch.update(doc(db, 'voucherTrades', id), {
+      status: 'Traded',
+      tradeDate: t.date,
+      cashReceived: cash,
+      haircut,
+      netPnl,
+      settlementTransactionId: txnId,
+    });
+    if (!linkedIds.includes(id)) linkedIds.push(id);
+  }
+  batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
+  await batch.commit();
+
+  document.getElementById('vt-apply-modal').classList.add('hidden');
+  renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
+  loadTransactions(true);
+}
+
+export async function unlinkVtChildFromCredit(txnId, childId) {
+  if (!confirm('Revert this split to Pending?')) return;
+  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
+  if (!txnSnap.exists()) return;
+  const t = txnSnap.data();
+  const linkedIds = (t.voucherTradeChildIds || []).filter(x => x !== childId);
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'voucherTrades', childId), {
+    status: 'Pending',
+    tradeDate: null,
+    cashReceived: null,
+    haircut: null,
+    netPnl: null,
+    settlementTransactionId: null,
+  });
+  batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
+  await batch.commit();
+  renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
+  loadTransactions(true);
 }
 
 export async function saveTransaction() {
@@ -268,7 +615,8 @@ async function loadFilteredTransactions() {
   if (activeFilters.tag) txns = txns.filter(t => t.transactionTag === activeFilters.tag);
   if (activeFilters.description) txns = txns.filter(t => (t.description || '').toLowerCase().includes(activeFilters.description));
 
-  renderTransactions(txns, true);
+  const vtChildMap = await buildVtEnrichment(txns);
+  renderTransactions(txns, true, vtChildMap);
 }
 
 export function toggleFilterPanel() {

@@ -2,8 +2,8 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/f
 import { auth } from './config.js';
 import { signInWithApple, signOut } from './auth.js';
 import { loadDashboard } from './dashboard.js';
-import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters } from './transactions.js';
-import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted } from './voucher-trades.js';
+import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit } from './transactions.js';
+import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
 import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
 
@@ -12,6 +12,13 @@ window.editTransaction = openEditTransaction;
 window.deleteTransaction = deleteTransaction;
 window.openMarkTradedModal = openMarkTradedModal;
 window.openEditTradeModal = openEditTradeModal;
+window.openEditSplitsModal = openEditSplitsModal;
+window.openSettleVtModal = openSettleVtModal;
+window.deleteVtParent = deleteVtParent;
+window.openConvertToVtModal = openConvertToVtModal;
+window.unlinkVtFromTxn = unlinkVtFromTxn;
+window.openApplyToVtModal = openApplyToVtModal;
+window.unlinkVtChildFromCredit = unlinkVtChildFromCredit;
 window.openEditRewardModal = openEditRewardModal;
 window.deleteReward = deleteReward;
 window.openAddCardModal  = openAddCardModal;
@@ -79,6 +86,14 @@ document.getElementById('save-trade-btn').addEventListener('click', saveTrade);
 document.getElementById('cancel-trade-btn').addEventListener('click', closeAddTradeModal);
 document.getElementById('save-mark-traded-btn').addEventListener('click', saveMarkTraded);
 document.getElementById('cancel-mark-traded-btn').addEventListener('click', closeMarkTradedModal);
+document.getElementById('save-edit-splits-btn').addEventListener('click', saveEditSplits);
+document.getElementById('edit-splits-add-row-btn').addEventListener('click', addEditSplitRow);
+document.getElementById('save-settle-vt-btn').addEventListener('click', saveSettleVt);
+document.getElementById('unsettle-vt-btn').addEventListener('click', unsettleVt);
+document.getElementById('settle-vt-credit-link').addEventListener('change', onSettleVtCreditChange);
+document.getElementById('vt-split-add-row-btn').addEventListener('click', addSplitRow);
+document.getElementById('save-vt-split-btn').addEventListener('click', saveVtSplits);
+document.getElementById('save-vt-apply-btn').addEventListener('click', saveVtApply);
 
 // Rewards
 document.getElementById('add-reward-btn').addEventListener('click', openAddRewardModal);

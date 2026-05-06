@@ -131,9 +131,11 @@ The remote URL uses **SSH** (`git@github.com:vishal-parwani/...`). SSH key at `~
 
 > Update this section at the end of every session. Keep it short.
 
-**Last updated:** 2026-05-01
+**Last updated:** 2026-05-06
 
 ### Recently shipped
+- 2026-05-06: **Voucher-trade flow overhaul** (parent/child schema). One debit can spawn N voucher-trade splits; each split settles either against a credit txn or as cash-only. Implemented in `js/voucher-trades.js`, `js/transactions.js`, `js/utils.js` (helpers `aggregateChildStatus`, `sumChildHaircut`, `computeChildHaircutPnl`). New modals: `edit-splits-modal` (manage parent's splits), `settle-vt-modal` (mark child traded with optional credit-txn link or cash-only), `vt-split-modal` + `vt-apply-modal` (debit→VT and credit→VT pickers from the txn modal). New Firestore fields: `voucherTrades.{isParent, parentId, purchaseTransactionId, settlementTransactionId, status, haircut, netPnl}` (haircut is in ₹ for new docs; legacy docs still use %); `transactions.{voucherTradeParentId, voucherTradeChildIds[]}`. Legacy flat voucherTrades docs render unchanged (no migration). VT chip on txn list rows shows status + haircut. Tab nav now sticky. Convention: when editing helpers, the parent/child render must keep the legacy-only branch working.
+- 2026-05-06: Fixed Infinia SmartBuy + EPM iShop tracker widgets in `dashboard.js`. Accel-points formula was using multiplier units (`*4`, `*36`) instead of actual accel rate; corrected to `*20` for Infinia (4× of 5pts/₹150) and `*30` for EPM (5× of 6pts/₹200). Also corrected the "remaining spend to cap" denominators. Period stays MTD (calendar month) — caps reset monthly. Visual verification pending — needs signed-in session.
 - 2026-04-30: Notification PNG (Pillow) handoff merged into `cards-processor/notification.py` and wired into the daily run. Sent via Telegram `sendPhoto`.
 - 2026-04-29: Forex markup rate field on card settings; charts on dashboard; AEP eligible spend fix.
 - 2026-04-26: Active toggle, no-wrap rows, description popover, points auto-calc fixes; PDF password field on card settings.

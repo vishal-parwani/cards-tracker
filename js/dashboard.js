@@ -132,12 +132,26 @@ async function loadCardData(card, monthStart) {
     });
   }
 
+  // EPM iShop accel pts have a 10k/day cap. Bucket by date, cap each day at 10k,
+  // and flag overages — but only the first two chronologically, because 2×10k
+  // already exceeds the 18k monthly cap so further warnings are moot.
+  const epmDailyOverages = [];
   if (card.name === 'ICICI EPM') {
+    const dailyAccel = new Map();
     mtdTxns.forEach(t => {
-      if (t.type === 'debit' && t.transactionTag === 'iShop') {
-        epmIshopPts += Math.floor((t.amount || 0) / 200) * 30; // 5× accel of 6pts/₹200
-      }
+      if (t.type !== 'debit' || t.transactionTag !== 'iShop' || !t.date) return;
+      const accel = Math.floor((t.amount || 0) / 200) * 30; // 5× accel of 6pts/₹200
+      const d = t.date.toDate ? t.date.toDate() : new Date(t.date);
+      const key = d.toISOString().slice(0, 10);
+      dailyAccel.set(key, (dailyAccel.get(key) || 0) + accel);
     });
+    const sortedDays = [...dailyAccel.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const overagesAll = [];
+    for (const [day, raw] of sortedDays) {
+      epmIshopPts += Math.min(raw, 10000);
+      if (raw > 10000) overagesAll.push({ day, raw });
+    }
+    epmDailyOverages.push(...overagesAll.slice(0, 2));
   }
 
   return {
@@ -148,6 +162,7 @@ async function loadCardData(card, monthStart) {
     magnusAepEligible,
     magnusSmartBuyPts,
     epmIshopPts,
+    epmDailyOverages,
     billingCycle: getBillingCycleLabel(card.cutoffDay)
   };
 }
@@ -280,6 +295,13 @@ function renderEpmIshop(cardResults) {
   const remainingSpend = Math.ceil((remainingPts / 30) * 200);
   const pct = Math.min(100, (pts / cap) * 100).toFixed(0);
 
+  const overages = epm.epmDailyOverages || [];
+  const dailyWarning = overages.length
+    ? `<div class="tracker-warning">⚠ Daily 10k accel cap hit (capped to 10k): ${overages
+        .map(o => `${o.day} (raw ${o.raw.toLocaleString('en-IN')} pts)`)
+        .join(', ')}</div>`
+    : '';
+
   return `
     <div class="tracker-card">
       <div class="tracker-header">
@@ -294,6 +316,7 @@ function renderEpmIshop(cardResults) {
         <span>${pts >= cap ? '✓ Cap reached' : formatCurrency(remainingSpend) + ' to max cap'}</span>
         <span>${pct}% used</span>
       </div>
+      ${dailyWarning}
     </div>
   `;
 }

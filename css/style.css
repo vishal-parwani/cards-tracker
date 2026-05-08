@@ -195,6 +195,9 @@ body {
 .vt-summary-label { font-weight: 600; color: var(--text-sec); }
 .vt-summary-val { font-weight: 700; color: var(--text); }
 .vt-summary-sub { font-weight: 500; color: var(--text-sec); font-size: 11px; }
+.aep-detail-line { font-size: 13px; line-height: 1.55; color: var(--text); }
+.aep-detail-spacer { height: 6px; }
+.aep-table td { font-size: 13px; }
 
 /* ── Progress Bars ── */
 .progress-bar-wrap { background: var(--bar-bg); border-radius: 999px; height: 7px; overflow: hidden; margin-bottom: 4px; }

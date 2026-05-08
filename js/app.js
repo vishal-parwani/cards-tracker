@@ -4,6 +4,7 @@ import { signInWithApple, signOut } from './auth.js';
 import { loadDashboard } from './dashboard.js';
 import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
+import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepReceived, clearAepReceived } from './aep-ledger.js';
 import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
 
@@ -19,6 +20,8 @@ window.openConvertToVtModal = openConvertToVtModal;
 window.unlinkVtFromTxn = unlinkVtFromTxn;
 window.openApplyToVtModal = openApplyToVtModal;
 window.unlinkVtChildFromCredit = unlinkVtChildFromCredit;
+window.openMarkAepReceivedModal = openMarkAepReceivedModal;
+window.openAepDetailModal = openAepDetailModal;
 window.openEditRewardModal = openEditRewardModal;
 window.deleteReward = deleteReward;
 window.openAddCardModal  = openAddCardModal;
@@ -64,6 +67,7 @@ function switchTab(tab) {
   if (tab === 'dashboard') loadDashboard();
   else if (tab === 'transactions') loadTransactions(true);
   else if (tab === 'voucher-trades') loadVoucherTrades();
+  else if (tab === 'aep-ledger') loadAepLedger();
   else if (tab === 'rewards') loadRewards();
   else if (tab === 'settings') loadSettings();
 }
@@ -94,6 +98,10 @@ document.getElementById('settle-vt-credit-link').addEventListener('change', onSe
 document.getElementById('vt-split-add-row-btn').addEventListener('click', addSplitRow);
 document.getElementById('save-vt-split-btn').addEventListener('click', saveVtSplits);
 document.getElementById('save-vt-apply-btn').addEventListener('click', saveVtApply);
+
+// AEP Ledger
+document.getElementById('save-aep-received-btn').addEventListener('click', saveAepReceived);
+document.getElementById('clear-aep-received-btn').addEventListener('click', clearAepReceived);
 
 // Rewards
 document.getElementById('add-reward-btn').addEventListener('click', openAddRewardModal);

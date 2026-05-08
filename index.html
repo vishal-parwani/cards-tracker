@@ -39,6 +39,7 @@
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="transactions">Transactions</button>
       <button class="tab-btn" data-tab="voucher-trades">Voucher Trades</button>
+      <button class="tab-btn" data-tab="aep-ledger">AEP Ledger</button>
       <button class="tab-btn" data-tab="rewards">Rewards</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </nav>
@@ -137,6 +138,14 @@
           </div>
         </div>
         <div id="voucher-trades-list"></div>
+      </div>
+
+      <!-- AEP Ledger -->
+      <div id="tab-aep-ledger" class="tab-panel hidden">
+        <div class="section-header">
+          <h2 class="section-title">Magnus AEP Ledger</h2>
+        </div>
+        <div id="aep-ledger-list"></div>
       </div>
 
       <!-- Rewards -->
@@ -536,6 +545,51 @@
       <div class="modal-footer">
         <button id="cancel-addon-btn-2" class="btn btn-secondary" onclick="document.getElementById('addon-modal').classList.add('hidden')">Cancel</button>
         <button id="save-addon-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Mark AEP Received -->
+  <div id="aep-received-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Mark AEP Received</h3>
+        <button class="modal-close" onclick="document.getElementById('aep-received-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="trade-desc"><span id="aep-received-month"></span></p>
+        <div class="form-row">
+          <label>Received Points</label>
+          <input type="number" id="aep-received-points" step="1" min="0" required>
+        </div>
+        <div class="form-row">
+          <label>Received Date</label>
+          <input type="date" id="aep-received-date" required>
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <textarea id="aep-received-notes" rows="2" placeholder="Optional notes (e.g. statement reference)"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clear-aep-received-btn" class="btn btn-secondary">Reset to Pending</button>
+        <button id="save-aep-received-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: AEP Calculation Detail -->
+  <div id="aep-detail-modal" class="modal-backdrop hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>AEP Calculation</h3>
+        <button class="modal-close" onclick="document.getElementById('aep-detail-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="aep-detail-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('aep-detail-modal').classList.add('hidden')">Close</button>
       </div>
     </div>
   </div>

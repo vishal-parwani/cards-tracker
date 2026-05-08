@@ -19,7 +19,10 @@ export async function loadDashboard() {
     const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
 
     const monthStart = getCurrentMonthStart();
-    const cardResults = await Promise.all(cards.map(c => loadCardData(c, monthStart)));
+    const [cardResults, vtSummary] = await Promise.all([
+      Promise.all(cards.map(c => loadCardData(c, monthStart))),
+      loadVtSummary(monthStart),
+    ]);
 
     container.innerHTML = `
       <section class="section">
@@ -36,6 +39,7 @@ export async function loadDashboard() {
           ${renderMagnusAep(cardResults, mbAep)}
           ${renderInfiniaSmartBuy(cardResults)}
           ${renderEpmIshop(cardResults)}
+          ${renderVtSummary(vtSummary)}
         </div>
       </section>
       <section class="section">
@@ -165,6 +169,59 @@ async function loadCardData(card, monthStart) {
     epmDailyOverages,
     billingCycle: getBillingCycleLabel(card.cutoffDay)
   };
+}
+
+async function loadVtSummary(monthStart) {
+  // Fetch all voucher trades; filter in JS. Personal-scale volume — fine.
+  // Skip parent docs (they aggregate children); count children + legacy.
+  // Scopes per spec:
+  //   gross   = sum purchaseAmount where purchaseDate is in current month (any status)
+  //   net     = sum cashReceived  where status='Traded' AND tradeDate is in current month
+  //   haircut = sum (purchaseAmount - cashReceived) over the same set as `net`
+  //   pending = sum purchaseAmount where status='Pending' (all time, current exposure)
+  const snap = await getDocs(collection(db, 'voucherTrades'));
+  let gross = 0, haircut = 0, net = 0, pending = 0;
+  snap.forEach(d => {
+    const v = d.data();
+    if (v.isParent) return;
+    const purchaseAmount = v.purchaseAmount || 0;
+    const pd = v.purchaseDate?.toDate ? v.purchaseDate.toDate() : null;
+    const td = v.tradeDate?.toDate    ? v.tradeDate.toDate()    : null;
+
+    if (pd && pd >= monthStart) gross += purchaseAmount;
+
+    if (v.status === 'Traded' && td && td >= monthStart) {
+      const cash = v.cashReceived || 0;
+      net     += cash;
+      haircut += (purchaseAmount - cash);
+    }
+
+    if (v.status === 'Pending') pending += purchaseAmount;
+  });
+  return { gross, haircut, net, pending };
+}
+
+function renderVtSummary(s) {
+  if (!s) return '';
+  const { gross, haircut, net, pending } = s;
+  // Haircut % is computed over the settled-this-month base (i.e., haircut + net),
+  // not over `gross` — gross includes purchased-but-not-yet-settled items, which
+  // would dilute the ratio meaninglessly.
+  const settledBase = haircut + net;
+  const haircutPct = settledBase > 0 ? (haircut / settledBase * 100).toFixed(1) : '0.0';
+  return `
+    <div class="tracker-card vt-summary-card">
+      <div class="tracker-header">
+        <span class="tracker-title">Voucher Trades · MTD</span>
+      </div>
+      <div class="tracker-metric">${formatCurrency(haircut)} <span class="tracker-sub">haircut · ${haircutPct}%</span></div>
+      <div class="vt-summary-grid">
+        <div><span class="vt-summary-label">Gross (purchased)</span><span class="vt-summary-val">${formatCurrency(gross)}</span></div>
+        <div><span class="vt-summary-label">Net (settled)</span><span class="vt-summary-val">${formatCurrency(net)}</span></div>
+        <div><span class="vt-summary-label">Pending (all-time)</span><span class="vt-summary-val">${formatCurrency(pending)}</span></div>
+      </div>
+    </div>
+  `;
 }
 
 function renderTotalCard(cardResults) {

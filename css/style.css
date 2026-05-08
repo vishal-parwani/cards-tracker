@@ -190,6 +190,11 @@ body {
 .tracker-sub    { font-size: 13px; font-weight: 600; color: var(--text-sec); }
 .tracker-row    { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--text-sec); margin-top: 6px; }
 .tracker-warning { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--badge-red-bg); color: var(--badge-red-txt); font-size: 12px; font-weight: 700; line-height: 1.4; }
+.vt-summary-grid { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 4px; }
+.vt-summary-grid > div { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+.vt-summary-label { font-weight: 600; color: var(--text-sec); }
+.vt-summary-val { font-weight: 700; color: var(--text); }
+.vt-summary-sub { font-weight: 500; color: var(--text-sec); font-size: 11px; }
 
 /* ── Progress Bars ── */
 .progress-bar-wrap { background: var(--bar-bg); border-radius: 999px; height: 7px; overflow: hidden; margin-bottom: 4px; }
@@ -250,9 +255,20 @@ body {
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
 .actions-cell { white-space: nowrap; text-align: right; }
-.data-table th:nth-child(5) { text-align: right; }
-.data-table th:last-child   { text-align: right; }
+.txn-table th:nth-child(5) { text-align: right; }
+.txn-table th:last-child   { text-align: right; }
 .pending-row  { background: #fdf8f0; }
+
+/* Transactions table — sticky header.
+   Override .data-table's overflow:hidden (which clips sticky descendants),
+   and re-apply rounded corners at the cell level so the table still looks
+   tucked into a card. Sticky offset = page header (52) + tab nav (~48). */
+.txn-table { overflow: visible; }
+.txn-table thead th { position: sticky; top: 100px; z-index: 5; }
+.txn-table thead th:first-child { border-top-left-radius: 14px; }
+.txn-table thead th:last-child  { border-top-right-radius: 14px; }
+.txn-table tbody tr:last-child td:first-child { border-bottom-left-radius: 14px; }
+.txn-table tbody tr:last-child td:last-child  { border-bottom-right-radius: 14px; }
 
 /* Transactions table column widths */
 .txn-table td { white-space: nowrap; }

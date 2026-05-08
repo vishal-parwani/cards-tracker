@@ -263,9 +263,11 @@ body {
 .pending-row  { background: #fdf8f0; }
 
 /* Transactions table — sticky header.
-   Override .data-table's overflow:hidden (which clips sticky descendants),
-   and re-apply rounded corners at the cell level so the table still looks
-   tucked into a card. Sticky offset = page header (52) + tab nav (~48). */
+   Override .data-table's overflow:hidden (clips sticky descendants) AND
+   the .table-wrap parent's overflow-x:auto (creates a scroll container
+   that traps sticky positioning). Re-apply rounded corners cell-by-cell.
+   Sticky offset = page header (52) + tab nav (~48). */
+#tab-transactions .table-wrap { overflow: visible; }
 .txn-table { overflow: visible; }
 .txn-table thead th { position: sticky; top: 100px; z-index: 5; }
 .txn-table thead th:first-child { border-top-left-radius: 14px; }

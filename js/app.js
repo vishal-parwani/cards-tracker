@@ -55,6 +55,8 @@ document.getElementById('sign-out-btn').addEventListener('click', async () => {
   await signOut();
 });
 
+document.getElementById('settings-gear-btn').addEventListener('click', () => switchTab('settings'));
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
@@ -63,6 +65,7 @@ function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== `tab-${tab}`));
+  document.getElementById('tab-actions-transactions').classList.toggle('hidden', tab !== 'transactions');
 
   if (tab === 'dashboard') loadDashboard();
   else if (tab === 'transactions') loadTransactions(true);

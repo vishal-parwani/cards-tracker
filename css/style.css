@@ -91,6 +91,13 @@ body {
   font-size: 13px; font-weight: 600;
 }
 .btn-link:hover { color: white; }
+.btn-icon-header {
+  background: none; border: none; padding: 4px;
+  color: #d4b89c; cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center;
+  border-radius: 6px; transition: color 0.15s, background 0.15s;
+}
+.btn-icon-header:hover { color: white; background: rgba(255,255,255,0.08); }
 
 /* ── Tab Nav ── */
 .tab-nav {
@@ -120,6 +127,7 @@ body {
 }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--terra); border-bottom-color: var(--terra); font-weight: 700; }
+.tab-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 
 /* ── Layout ── */
 .main-content { padding: 20px; max-width: 1200px; margin: 0 auto; }

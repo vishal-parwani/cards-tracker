@@ -11,7 +11,9 @@ let stmtListenersAttached = false;
 let activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
 let filterPanelInitialized = false;
 let pointsManuallyEdited = false;
+let tagManuallyEdited = false;
 
+// Base rates (per ₹X). Accel rates layered on by tag below.
 const CARD_POINTS_RATES = {
   'Magnus Burgundy': { rate: 12, per: 200 },
   'Infinia':         { rate: 5,  per: 150 },
@@ -25,19 +27,61 @@ const CARD_EXCLUDED_CATS = {
   'Times Black':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
 };
 
+// Mirror processor's derive_transaction_tag(card, description).
+// Single source of truth: tag drives points. The processor and the UI
+// both derive the tag from card+description the same way so manual edits
+// stay consistent with automated writes.
+function deriveTag(card, description) {
+  const desc = (description || '').toUpperCase();
+  if (card === 'Infinia' && desc.includes('SMARTBUY')) return 'SmartBuy';
+  const stripped = desc.replace(/\s+/g, '');
+  if ((card === 'ICICI EPM' || card === 'Times Black') &&
+      (stripped.includes('ISHOP') || stripped.includes('REWARD360GLOB'))) {
+    return 'iShop';
+  }
+  return '';
+}
+
+// Compute points keyed off tag (uncapped — processor enforces monthly caps
+// at write time; UI shows the un-capped value as a guide).
+function computePointsForTag(card, amount, category, type, tag) {
+  if (type === 'credit') return 0;
+  const excl = CARD_EXCLUDED_CATS[card];
+  if (excl && excl.has(category)) return 0;
+  if (card === 'Infinia' && tag === 'SmartBuy') {
+    return Math.floor(amount / 150) * 25;  // 5x = base 5 + accel 20
+  }
+  if (card === 'ICICI EPM' && tag === 'iShop') {
+    const rate = category === 'Travel - Hotels' ? 72 : 36;  // 6x or 12x
+    return Math.floor(amount / 200) * rate;
+  }
+  if (card === 'Times Black' && tag === 'iShop') {
+    return Math.floor(amount / 100) * 12;  // 6x
+  }
+  const r = CARD_POINTS_RATES[card];
+  return r ? Math.floor(amount / r.per) * r.rate : 0;
+}
+
 function autoComputePoints() {
   if (pointsManuallyEdited) return;
   const card     = document.getElementById('txn-card').value;
   const amount   = parseFloat(document.getElementById('txn-amount').value) || 0;
   const category = document.getElementById('txn-category').value;
   const type     = document.getElementById('txn-type').value;
-  const el       = document.getElementById('txn-points');
+  const tag      = document.getElementById('txn-tag').value;
+  document.getElementById('txn-points').value =
+    computePointsForTag(card, amount, category, type, tag);
+}
 
-  if (type === 'credit') { el.value = 0; return; }
-  const excl = CARD_EXCLUDED_CATS[card];
-  if (excl && excl.has(category)) { el.value = 0; return; }
-  const r = CARD_POINTS_RATES[card];
-  el.value = r ? Math.floor(amount / r.per) * r.rate : 0;
+// Auto-set the tag from card+description unless the user has touched it.
+// After updating the tag, recompute points.
+function autoSetTagFromDesc() {
+  if (tagManuallyEdited) return;
+  const card        = document.getElementById('txn-card').value;
+  const description = document.getElementById('txn-description').value;
+  const derived     = deriveTag(card, description);
+  const tagEl       = document.getElementById('txn-tag');
+  if (tagEl.value !== derived) tagEl.value = derived;
 }
 
 window.showDescPopover = function(e, cell) {
@@ -82,10 +126,22 @@ function ensureStmtListeners() {
   if (stmtListenersAttached) return;
   document.getElementById('txn-date').addEventListener('change', updateStatementPeriod);
   document.getElementById('txn-card').addEventListener('change', updateStatementPeriod);
+  // Card or description change → re-derive tag, then re-compute points.
+  document.getElementById('txn-card').addEventListener('change', () => {
+    autoSetTagFromDesc();
+    autoComputePoints();
+  });
+  document.getElementById('txn-description').addEventListener('input', () => {
+    autoSetTagFromDesc();
+    autoComputePoints();
+  });
   document.getElementById('txn-amount').addEventListener('input', autoComputePoints);
-  document.getElementById('txn-card').addEventListener('change', autoComputePoints);
   document.getElementById('txn-category').addEventListener('change', autoComputePoints);
   document.getElementById('txn-type').addEventListener('change', autoComputePoints);
+  document.getElementById('txn-tag').addEventListener('change', () => {
+    tagManuallyEdited = true;
+    autoComputePoints();
+  });
   document.getElementById('txn-points').addEventListener('input', () => { pointsManuallyEdited = true; });
   stmtListenersAttached = true;
 }
@@ -234,6 +290,7 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-notes').value = txn?.notes || '';
 
   pointsManuallyEdited = false;
+  tagManuallyEdited = false;
   ensureStmtListeners();
   updateStatementPeriod();
 

@@ -130,7 +130,7 @@ body {
 .tab-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 
 /* ── Layout ── */
-.main-content { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.main-content { padding: 20px; width: 90%; margin: 0 auto; }
 .section { margin-bottom: 28px; }
 .section-title { font-size: 16px; font-weight: 800; margin-bottom: 14px; color: var(--text); }
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -162,10 +162,10 @@ body {
 .balance-card-header { display: flex; flex-direction: column; margin-bottom: 12px; }
 .card-name   { font-weight: 800; font-size: 14px; color: var(--text); }
 .billing-cycle { font-size: 11px; color: var(--text-sec); margin-top: 2px; font-weight: 600; }
-.balance-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
-.balance-label  { font-size: 12px; color: var(--text-sec); font-weight: 600; }
-.balance-amount { font-size: 15px; font-weight: 700; color: var(--text); }
-.balance-amount.accent { color: var(--terra); font-size: 18px; font-weight: 800; }
+.balance-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 4px 0; }
+.balance-label  { font-size: 12px; color: var(--text-sec); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.balance-amount { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; min-width: 0; text-align: right; }
+.balance-amount.accent { color: var(--terra); font-size: 17px; font-weight: 800; }
 
 /* ── Chart Cards ── */
 .chart-card {
@@ -333,6 +333,19 @@ body {
 }
 .settings-card-info { display: flex; flex-direction: column; gap: 3px; }
 .settings-card.inactive { opacity: 0.55; }
+.settings-card-tile {
+  background: var(--card); border-radius: 14px;
+  border: 1px solid var(--border); padding: 16px 18px;
+  box-shadow: 0 1px 6px rgba(92,61,46,0.08);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.settings-card-tile.inactive { opacity: 0.6; }
+.settings-tile-header { display: flex; justify-content: space-between; align-items: center; }
+.settings-tile-sub { font-size: 12px; color: var(--text-sec); font-weight: 600; min-height: 16px; }
+.settings-tile-rows { display: flex; flex-direction: column; gap: 4px; }
+.settings-tile-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-sec); font-weight: 600; }
+.settings-tile-row strong { color: var(--text); font-weight: 700; }
+.settings-tile-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 .settings-detail { font-size: 12px; font-weight: 600; color: var(--text-sec); }
 .settings-detail-small { font-size: 11px; color: var(--text-sec); }
 .form-hint { font-weight: 400; font-size: 11px; color: var(--text-sec); }

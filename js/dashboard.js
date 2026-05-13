@@ -23,6 +23,7 @@ export async function loadDashboard() {
       Promise.all(cards.map(c => loadCardData(c, monthStart))),
       loadVtSummary(monthStart),
     ]);
+    const sortedCards = [...cardResults].sort((a, b) => b.mtdSpend - a.mtdSpend);
 
     container.innerHTML = `
       <section class="section">
@@ -30,7 +31,7 @@ export async function loadDashboard() {
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
-          ${cardResults.map(r => renderCardBalanceCard(r)).join('')}
+          ${sortedCards.map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
       <section class="section">

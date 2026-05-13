@@ -36,7 +36,13 @@ export async function loadSettings() {
       .sort((a, b) => a.name.localeCompare(b.name));
     _cardsCache = {};
     cards.forEach(c => (_cardsCache[c.name] = c));
-    _addonCache = addonSnap.exists() ? (addonSnap.data() || {}) : {};
+    const rawAddon = addonSnap.exists() ? (addonSnap.data() || {}) : {};
+    _addonCache = {};
+    Object.entries(rawAddon).forEach(([last4, val]) => {
+      _addonCache[last4] = typeof val === 'string'
+        ? { mainCard: val, holderName: '' }
+        : { mainCard: val.mainCard || '', holderName: val.holderName || '' };
+    });
     renderSettings(cards);
   } catch (e) {
     container.innerHTML = `<p class="error">Error: ${e.message}</p>`;
@@ -46,28 +52,29 @@ export async function loadSettings() {
 function renderSettings(cards) {
   const addonEntries = Object.entries(_addonCache);
   const container = document.getElementById('settings-content');
+  const esc = s => String(s).replace(/'/g, "\\'");
   container.innerHTML = `
     <section class="section">
       <div class="section-header">
         <h2 class="section-title">Cards</h2>
         <button class="btn btn-primary" onclick="window.openAddCardModal()">+ Add Card</button>
       </div>
-      <div class="cards-settings-list">
+      <div class="cards-grid">
         ${cards.map(card => `
-          <div class="settings-card${card.active ? '' : ' inactive'}">
-            <div class="settings-card-info">
+          <div class="settings-card-tile${card.active ? '' : ' inactive'}">
+            <div class="settings-tile-header">
               <span class="card-name">${card.name}</span>
-              ${card.bank || card.last4 ? `<span class="settings-detail-small">${card.bank}${card.last4 ? ' ••' + card.last4 : ''}</span>` : ''}
-              <span class="settings-detail">
-                Statement: <strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong>
-                &nbsp;·&nbsp;
-                Bill due: <strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong>
-                &nbsp;·&nbsp;
-                Forex: <strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong>
-                ${!card.active ? '&nbsp;·&nbsp;<em>Inactive</em>' : ''}
-              </span>
+              ${!card.active ? '<span class="tracker-badge badge-orange">Inactive</span>' : ''}
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${card.name.replace(/'/g, "\\'")}')">Edit</button>
+            <div class="settings-tile-sub">${card.bank || ''}${card.last4 ? (card.bank ? ' ' : '') + '••' + card.last4 : ''}</div>
+            <div class="settings-tile-rows">
+              <div class="settings-tile-row"><span>Statement</span><strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong></div>
+              <div class="settings-tile-row"><span>Bill due</span><strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong></div>
+              <div class="settings-tile-row"><span>Forex</span><strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong></div>
+            </div>
+            <div class="settings-tile-actions">
+              <button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${esc(card.name)}')">Edit</button>
+            </div>
           </div>
         `).join('')}
       </div>
@@ -78,19 +85,23 @@ function renderSettings(cards) {
         <button class="btn btn-primary btn-sm" onclick="window.openAddAddOnModal()">+ Add</button>
       </div>
       <p class="settings-hint">Add-on card numbers that should be recorded under a main card. Used by the processor to resolve transactions automatically.</p>
-      <div class="cards-settings-list" style="margin-top:10px">
-        ${addonEntries.length === 0
-          ? '<p class="empty" style="padding:6px 0">No add-on cards configured.</p>'
-          : addonEntries.map(([last4, mainCard]) => `
-              <div class="settings-card">
-                <div class="settings-card-info">
-                  <span class="card-name">••${last4}</span>
-                  <span class="settings-detail-small">→ ${mainCard}</span>
+      ${addonEntries.length === 0
+        ? '<p class="empty" style="padding:6px 0">No add-on cards configured.</p>'
+        : `<div class="cards-grid" style="margin-top:10px">
+            ${addonEntries.map(([last4, info]) => `
+              <div class="settings-card-tile">
+                <div class="settings-tile-header"><span class="card-name">••${last4}</span></div>
+                <div class="settings-tile-sub">${info.holderName ? info.holderName : '<em style="color:var(--text-sec)">No name</em>'}</div>
+                <div class="settings-tile-rows">
+                  <div class="settings-tile-row"><span>Main card</span><strong>${info.mainCard || '—'}</strong></div>
                 </div>
-                <button class="btn btn-secondary btn-sm" onclick="window.deleteAddOnCard('${last4}')">Remove</button>
+                <div class="settings-tile-actions">
+                  <button class="btn btn-secondary btn-sm" onclick="window.openEditAddOnModal('${esc(last4)}')">Edit</button>
+                  <button class="btn btn-secondary btn-sm" onclick="window.deleteAddOnCard('${esc(last4)}')">Remove</button>
+                </div>
               </div>
             `).join('')}
-      </div>
+          </div>`}
     </section>
   `;
 }
@@ -183,26 +194,43 @@ export function closeCardModal() {
 
 // ── Add-on card modal ─────────────────────────────────────────────
 
-export function openAddAddOnModal() {
+function populateAddOnMainSelect(selected) {
   const select = document.getElementById('addon-main-card');
   select.innerHTML = Object.keys(_cardsCache)
     .sort()
-    .map(name => `<option value="${name}">${name}</option>`)
+    .map(name => `<option value="${name}"${name === selected ? ' selected' : ''}>${name}</option>`)
     .join('');
+}
+
+export function openAddAddOnModal() {
+  populateAddOnMainSelect();
   document.getElementById('addon-last4').value = '';
+  document.getElementById('addon-last4').readOnly = false;
+  document.getElementById('addon-holder-name').value = '';
+  document.getElementById('addon-modal').classList.remove('hidden');
+}
+
+export function openEditAddOnModal(last4) {
+  const info = _addonCache[last4];
+  if (!info) return;
+  populateAddOnMainSelect(info.mainCard);
+  document.getElementById('addon-last4').value = last4;
+  document.getElementById('addon-last4').readOnly = true;
+  document.getElementById('addon-holder-name').value = info.holderName || '';
   document.getElementById('addon-modal').classList.remove('hidden');
 }
 
 export async function saveAddOnCard() {
-  const last4    = document.getElementById('addon-last4').value.trim();
-  const mainCard = document.getElementById('addon-main-card').value;
+  const last4      = document.getElementById('addon-last4').value.trim();
+  const mainCard   = document.getElementById('addon-main-card').value;
+  const holderName = document.getElementById('addon-holder-name').value.trim();
   if (!/^\d{4}$/.test(last4)) { alert('Enter exactly 4 digits.'); return; }
   if (!mainCard) { alert('Select a main card.'); return; }
 
   const ref  = doc(db, 'config', 'addOnCards');
   const snap = await getDoc(ref);
   const data = snap.exists() ? (snap.data() || {}) : {};
-  await setDoc(ref, { ...data, [last4]: mainCard });
+  await setDoc(ref, { ...data, [last4]: { mainCard, holderName } });
   closeAddOnModal();
   loadSettings();
 }

@@ -6,7 +6,7 @@ import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransa
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
 import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepReceived, clearAepReceived } from './aep-ledger.js';
 import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
-import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
+import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, openEditAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
 
 // Expose handlers to HTML onclick attributes
 window.editTransaction = openEditTransaction;
@@ -27,6 +27,7 @@ window.deleteReward = deleteReward;
 window.openAddCardModal  = openAddCardModal;
 window.openEditCardModal = openEditCardModal;
 window.openAddAddOnModal = openAddAddOnModal;
+window.openEditAddOnModal = openEditAddOnModal;
 window.deleteAddOnCard   = deleteAddOnCard;
 
 let activeTab = 'dashboard';

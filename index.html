@@ -151,7 +151,19 @@
       <div id="tab-rewards" class="tab-panel hidden">
         <div class="section-header">
           <h2 class="section-title">Rewards Tracker</h2>
-          <button id="add-reward-btn" class="btn btn-primary">+ Add</button>
+        </div>
+        <div class="rewards-filter">
+          <div class="rewards-filter-presets">
+            <button class="rwd-preset active" data-preset="this-month">This month</button>
+            <button class="rwd-preset" data-preset="last-month">Last month</button>
+            <button class="rwd-preset" data-preset="this-year">This year</button>
+            <button class="rwd-preset" data-preset="last-year">Last year</button>
+            <button class="rwd-preset" data-preset="all">All time</button>
+          </div>
+          <div class="rewards-filter-custom">
+            <label>From <input type="date" id="rewards-from"></label>
+            <label>To <input type="date" id="rewards-to"></label>
+          </div>
         </div>
         <div class="table-wrap">
           <div id="rewards-list"></div>
@@ -407,11 +419,11 @@
     </div>
   </div>
 
-  <!-- Modal: Add/Edit Reward -->
+  <!-- Modal: Rewards Setup (per card) -->
   <div id="reward-modal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-header">
-        <h3>Rewards Entry</h3>
+        <h3 id="reward-modal-title">Rewards Setup</h3>
         <button class="modal-close" id="cancel-reward-btn">✕</button>
       </div>
       <div class="modal-body">
@@ -419,7 +431,7 @@
         <div class="form-row two-col">
           <div>
             <label>Card</label>
-            <input type="text" id="reward-card" placeholder="Card name">
+            <select id="reward-card"></select>
           </div>
           <div>
             <label>Points Type</label>
@@ -428,45 +440,33 @@
         </div>
         <div class="form-row two-col">
           <div>
-            <label>Statement Period</label>
-            <input type="text" id="reward-stmt-period" placeholder="e.g. 20/03/2026 - 18/04/2026">
-          </div>
-          <div>
-            <label>Statement Date</label>
-            <input type="date" id="reward-stmt-date">
-          </div>
-        </div>
-        <div class="form-row four-col">
-          <div>
-            <label>Opening</label>
+            <label>Opening Balance</label>
             <input type="number" id="reward-opening" min="0">
           </div>
           <div>
-            <label>Earned</label>
-            <input type="number" id="reward-earned" min="0">
-          </div>
-          <div>
-            <label>Redeemed</label>
-            <input type="number" id="reward-redeemed" min="0">
-          </div>
-          <div>
-            <label>Lapsed</label>
-            <input type="number" id="reward-lapsed" min="0">
+            <label>Opening Date</label>
+            <input type="date" id="reward-opening-date">
           </div>
         </div>
         <div class="form-row two-col">
           <div>
-            <label>Closing Balance</label>
-            <input type="number" id="reward-closing" min="0">
+            <label>Closing Override <span class="label-hint">— blank = auto-calculated</span></label>
+            <input type="number" id="reward-closing-override" min="0" placeholder="Auto">
           </div>
           <div>
             <label>Notes</label>
             <input type="text" id="reward-notes" placeholder="Optional">
           </div>
         </div>
+        <div class="form-row">
+          <label>Redemptions <span class="label-hint">— manual; dated so they scope to the filter</span></label>
+          <div id="reward-redemptions"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="reward-add-redemption-btn">+ Add redemption</button>
+        </div>
       </div>
       <div class="modal-footer">
-        <button id="cancel-reward-btn-2" class="btn btn-secondary" onclick="document.getElementById('reward-modal').classList.add('hidden')">Cancel</button>
+        <button id="delete-reward-btn" class="btn btn-secondary" style="margin-right:auto;">Delete</button>
+        <button id="cancel-reward-btn-2" class="btn btn-secondary">Cancel</button>
         <button id="save-reward-btn" class="btn btn-primary">Save</button>
       </div>
     </div>

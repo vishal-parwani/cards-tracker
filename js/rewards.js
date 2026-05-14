@@ -1,117 +1,275 @@
-import { collection, query, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, Timestamp, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatDate, formatDateInput } from './utils.js';
 
+// ── Period filter ─────────────────────────────────────────────────
+// One row per card; the filter just re-scopes the numbers. Earned is
+// always derived from transactions; Redeemed/Closing come from the
+// per-card rewardsTracker doc (manual opening baseline + dated
+// redemptions, with an optional manual closing override).
+let activePreset = 'this-month';
+
+function endOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+function periodRange(preset, customFrom, customTo) {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const monthLabel = (yy, mm) =>
+    new Date(yy, mm, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+
+  switch (preset) {
+    case 'last-month':
+      return { from: new Date(y, m - 1, 1), to: endOfDay(new Date(y, m, 0)), label: monthLabel(y, m - 1) };
+    case 'this-year':
+      return { from: new Date(y, 0, 1), to: endOfDay(new Date(y, 11, 31)), label: String(y) };
+    case 'last-year':
+      return { from: new Date(y - 1, 0, 1), to: endOfDay(new Date(y - 1, 11, 31)), label: String(y - 1) };
+    case 'all':
+      return { from: new Date(2000, 0, 1), to: endOfDay(now), label: 'All time' };
+    case 'custom': {
+      const f = customFrom ? new Date(customFrom) : new Date(y, m, 1);
+      const t = customTo ? endOfDay(new Date(customTo)) : endOfDay(now);
+      return { from: f, to: t, label: `${formatDate(f)} – ${formatDate(t)}` };
+    }
+    case 'this-month':
+    default:
+      return { from: new Date(y, m, 1), to: endOfDay(new Date(y, m + 1, 0)), label: monthLabel(y, m) };
+  }
+}
+
+export function setRewardsPreset(preset) {
+  activePreset = preset;
+  document.querySelectorAll('.rwd-preset').forEach(b =>
+    b.classList.toggle('active', b.dataset.preset === preset));
+  loadRewards();
+}
+
+export function setRewardsCustom() {
+  activePreset = 'custom';
+  document.querySelectorAll('.rwd-preset').forEach(b => b.classList.remove('active'));
+  loadRewards();
+}
+
+// ── Load + compute ────────────────────────────────────────────────
 export async function loadRewards() {
   const container = document.getElementById('rewards-list');
   container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
-    const snap = await getDocs(query(collection(db, 'rewardsTracker'), orderBy('statementDate', 'desc')));
-    const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderRewards(entries);
+    const fromInput = document.getElementById('rewards-from');
+    const toInput = document.getElementById('rewards-to');
+    const period = periodRange(activePreset, fromInput?.value, toInput?.value);
+
+    // Personal-scale volume — fetching all transactions is fine, and we
+    // need the full history anyway to compute closing back to each card's
+    // opening date.
+    const [cardsSnap, rtSnap, txnSnap] = await Promise.all([
+      getDoc(doc(db, 'config', 'cards')),
+      getDocs(collection(db, 'rewardsTracker')),
+      getDocs(collection(db, 'transactions')),
+    ]);
+
+    const cardNames = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
+
+    const rtByCard = {};
+    rtSnap.forEach(d => { const v = d.data(); rtByCard[v.card] = { id: d.id, ...v }; });
+
+    const txns = [];
+    txnSnap.forEach(d => {
+      const t = d.data();
+      if (!t.date || !t.card) return;
+      txns.push({ card: t.card, date: t.date.toDate(), pts: t.pointsEarned || 0 });
+    });
+
+    // Every config card gets a row; include any orphan rewardsTracker
+    // cards not (or no longer) in config so their data stays visible.
+    const allCards = [...cardNames];
+    Object.keys(rtByCard).forEach(c => { if (!allCards.includes(c)) allCards.push(c); });
+
+    const rows = allCards.map(card => computeCardRow(card, rtByCard[card], txns, period));
+    renderRewards(rows, period);
   } catch (e) {
     container.innerHTML = `<p class="error">Error: ${e.message}</p>`;
   }
 }
 
-function renderRewards(entries) {
+function toDate(v) {
+  if (!v) return null;
+  return v.toDate ? v.toDate() : new Date(v);
+}
+
+function sumTxnPts(txns, card, from, to) {
+  let s = 0;
+  for (const t of txns) {
+    if (t.card === card && t.date >= from && t.date <= to) s += t.pts;
+  }
+  return s;
+}
+
+function sumRedemptions(redemptions, from, to) {
+  return (redemptions || []).reduce((s, r) => {
+    const d = toDate(r.date);
+    return (d && d >= from && d <= to) ? s + (r.points || 0) : s;
+  }, 0);
+}
+
+function computeCardRow(card, rt, txns, period) {
+  const earned = sumTxnPts(txns, card, period.from, period.to);
+  let redeemed = 0, closing = null, closingOverridden = false;
+  const configured = !!rt;
+
+  if (rt) {
+    redeemed = sumRedemptions(rt.redemptions, period.from, period.to);
+
+    if (rt.closingOverride != null && rt.closingOverride !== '') {
+      closing = rt.closingOverride;
+      closingOverridden = true;
+    } else {
+      const openDate = toDate(rt.openingDate);
+      // Closing = balance as of the range end. Computable only when the
+      // range end is on/after the opening baseline date.
+      if (openDate && period.to >= openDate) {
+        closing = (rt.openingBalance || 0)
+          + sumTxnPts(txns, card, openDate, period.to)
+          - sumRedemptions(rt.redemptions, openDate, period.to);
+      }
+    }
+  }
+
+  return { card, pointsType: rt?.pointsType || '', earned, redeemed, closing, closingOverridden, configured };
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function renderRewards(rows, period) {
   const container = document.getElementById('rewards-list');
-  if (entries.length === 0) {
-    container.innerHTML = '<p class="empty">No rewards entries yet.</p>';
+  if (rows.length === 0) {
+    container.innerHTML = '<p class="empty">No cards configured. Add cards in Settings.</p>';
     return;
   }
 
+  const totals = rows.reduce((a, r) => ({
+    earned: a.earned + r.earned,
+    redeemed: a.redeemed + r.redeemed,
+    closing: a.closing + (r.closing || 0),
+  }), { earned: 0, redeemed: 0, closing: 0 });
+
+  const fmt = n => n.toLocaleString('en-IN');
+
   container.innerHTML = `
-    <table class="data-table">
+    <p class="rewards-period-note">
+      One row per card for <strong>${period.label}</strong>.
+      <span class="rwd-auto-key">Earned</span> auto-sums transaction points in range;
+      Redeemed &amp; Closing come from each card's manual setup — tap a row to edit.
+    </p>
+    <table class="data-table rewards-table">
       <thead>
         <tr>
           <th>Card</th>
-          <th>Points Type</th>
-          <th>Statement Period</th>
-          <th>Statement Date</th>
-          <th>Opening</th>
-          <th>Earned</th>
-          <th>Redeemed</th>
-          <th>Lapsed</th>
-          <th>Closing</th>
-          <th>Notes</th>
-          <th></th>
+          <th class="rwd-num rwd-earned-col">Earned</th>
+          <th class="rwd-num">Redeemed</th>
+          <th class="rwd-num">Closing Balance</th>
         </tr>
       </thead>
       <tbody>
-        ${entries.map(e => `
-          <tr>
-            <td>${e.card || ''}</td>
-            <td>${e.pointsType || ''}</td>
-            <td>${e.statementPeriod || ''}</td>
-            <td>${formatDate(e.statementDate)}</td>
-            <td>${e.openingBalance?.toLocaleString('en-IN') || '—'}</td>
-            <td>${e.pointsEarned?.toLocaleString('en-IN') || '—'}</td>
-            <td>${e.redeemed?.toLocaleString('en-IN') || '—'}</td>
-            <td>${e.lapsed?.toLocaleString('en-IN') || '—'}</td>
-            <td><strong>${e.closingBalance?.toLocaleString('en-IN') || '—'}</strong></td>
-            <td>${e.notes || ''}</td>
+        ${rows.map(r => `
+          <tr class="rwd-row" onclick="window.openEditRewardModal('${r.card.replace(/'/g, "\\'")}')">
             <td>
-              <button class="btn-icon" onclick="window.openEditRewardModal('${e.id}')">✏️</button>
-              <button class="btn-icon" onclick="window.deleteReward('${e.id}')">🗑️</button>
+              <div class="rwd-card-name">${r.card}</div>
+              <div class="rwd-card-type">${
+                r.pointsType || (r.configured ? '' : '<span class="rwd-setup">tap to set up</span>')
+              }</div>
             </td>
+            <td class="rwd-num rwd-earned-col">${fmt(r.earned)}</td>
+            <td class="rwd-num">${r.configured ? fmt(r.redeemed) : '—'}</td>
+            <td class="rwd-num">${
+              r.closing != null ? `<strong>${fmt(r.closing)}</strong>` : '—'
+            }${
+              r.closingOverridden ? '<span class="rwd-override" title="Manually overridden">override</span>' : ''
+            }</td>
           </tr>
         `).join('')}
+        <tr class="rwd-total-row">
+          <td>All cards</td>
+          <td class="rwd-num rwd-earned-col">${fmt(totals.earned)}</td>
+          <td class="rwd-num">${fmt(totals.redeemed)}</td>
+          <td class="rwd-num">${fmt(totals.closing)}</td>
+        </tr>
       </tbody>
     </table>
   `;
 }
 
-export function openAddRewardModal() {
-  document.getElementById('reward-id').value = '';
-  document.getElementById('reward-card').value = '';
-  document.getElementById('reward-points-type').value = '';
-  document.getElementById('reward-stmt-period').value = '';
-  document.getElementById('reward-stmt-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('reward-opening').value = '';
-  document.getElementById('reward-earned').value = '';
-  document.getElementById('reward-redeemed').value = '';
-  document.getElementById('reward-lapsed').value = '';
-  document.getElementById('reward-closing').value = '';
-  document.getElementById('reward-notes').value = '';
-  document.getElementById('reward-modal').classList.remove('hidden');
+// ── Modal ─────────────────────────────────────────────────────────
+function redemptionRowHtml(r = {}) {
+  const d = r.date ? formatDateInput(r.date.toDate ? r.date.toDate() : new Date(r.date)) : '';
+  const note = (r.note || '').replace(/"/g, '&quot;');
+  return `
+    <div class="rwd-redemption-row">
+      <input type="date" class="rwd-red-date" value="${d}">
+      <input type="number" class="rwd-red-points" min="0" placeholder="Points" value="${r.points || ''}">
+      <input type="text" class="rwd-red-note" placeholder="Note" value="${note}">
+      <button type="button" class="btn-icon rwd-red-remove" title="Remove">✕</button>
+    </div>`;
 }
 
-export async function openEditRewardModal(id) {
-  const snap = await getDoc(doc(db, 'rewardsTracker', id));
-  if (!snap.exists()) return;
-  const e = snap.data();
+export function addRedemptionRow() {
+  document.getElementById('reward-redemptions').insertAdjacentHTML('beforeend', redemptionRowHtml());
+}
 
-  document.getElementById('reward-id').value = id;
-  document.getElementById('reward-card').value = e.card || '';
+export async function openEditRewardModal(card) {
+  const rtSnap = await getDocs(query(collection(db, 'rewardsTracker'), where('card', '==', card)));
+  const existing = rtSnap.docs[0];
+  const e = existing ? existing.data() : {};
+
+  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+  const cards = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
+  if (!cards.includes(card)) cards.push(card);
+
+  document.getElementById('reward-id').value = existing ? existing.id : '';
+  document.getElementById('reward-modal-title').textContent = `Rewards Setup — ${card}`;
+  document.getElementById('reward-card').innerHTML =
+    cards.map(c => `<option value="${c}" ${c === card ? 'selected' : ''}>${c}</option>`).join('');
   document.getElementById('reward-points-type').value = e.pointsType || '';
-  document.getElementById('reward-stmt-period').value = e.statementPeriod || '';
-  document.getElementById('reward-stmt-date').value = e.statementDate ? formatDateInput(e.statementDate.toDate()) : '';
-  document.getElementById('reward-opening').value = e.openingBalance || '';
-  document.getElementById('reward-earned').value = e.pointsEarned || '';
-  document.getElementById('reward-redeemed').value = e.redeemed || '';
-  document.getElementById('reward-lapsed').value = e.lapsed || '';
-  document.getElementById('reward-closing').value = e.closingBalance || '';
+  document.getElementById('reward-opening').value = e.openingBalance ?? '';
+  document.getElementById('reward-opening-date').value =
+    e.openingDate ? formatDateInput(e.openingDate.toDate()) : '';
+  document.getElementById('reward-closing-override').value = e.closingOverride ?? '';
   document.getElementById('reward-notes').value = e.notes || '';
+  document.getElementById('reward-redemptions').innerHTML =
+    (e.redemptions || []).map(redemptionRowHtml).join('');
+  document.getElementById('delete-reward-btn').style.display = existing ? '' : 'none';
+
   document.getElementById('reward-modal').classList.remove('hidden');
 }
 
 export async function saveReward() {
   const id = document.getElementById('reward-id').value;
-  const dateStr = document.getElementById('reward-stmt-date').value;
+  const card = document.getElementById('reward-card').value;
+  if (!card) { alert('Pick a card.'); return; }
+
+  const openingDateStr = document.getElementById('reward-opening-date').value;
+  const overrideStr = document.getElementById('reward-closing-override').value.trim();
+
+  const redemptions = [...document.querySelectorAll('#reward-redemptions .rwd-redemption-row')]
+    .map(row => {
+      const d = row.querySelector('.rwd-red-date').value;
+      const pts = parseInt(row.querySelector('.rwd-red-points').value);
+      const note = row.querySelector('.rwd-red-note').value.trim();
+      if (!d || !pts) return null;
+      return { date: Timestamp.fromDate(new Date(d)), points: pts, note };
+    })
+    .filter(Boolean);
 
   const data = {
-    card: document.getElementById('reward-card').value.trim(),
+    card,
     pointsType: document.getElementById('reward-points-type').value.trim(),
-    statementPeriod: document.getElementById('reward-stmt-period').value.trim(),
-    statementDate: dateStr ? Timestamp.fromDate(new Date(dateStr)) : null,
-    openingBalance: parseInt(document.getElementById('reward-opening').value) || null,
-    pointsEarned: parseInt(document.getElementById('reward-earned').value) || null,
-    redeemed: parseInt(document.getElementById('reward-redeemed').value) || null,
-    lapsed: parseInt(document.getElementById('reward-lapsed').value) || null,
-    closingBalance: parseInt(document.getElementById('reward-closing').value) || null,
-    notes: document.getElementById('reward-notes').value.trim()
+    openingBalance: parseInt(document.getElementById('reward-opening').value) || 0,
+    openingDate: openingDateStr ? Timestamp.fromDate(new Date(openingDateStr)) : null,
+    closingOverride: overrideStr === '' ? null : (parseInt(overrideStr) || 0),
+    redemptions,
+    notes: document.getElementById('reward-notes').value.trim(),
   };
 
   if (id) {
@@ -124,9 +282,12 @@ export async function saveReward() {
   loadRewards();
 }
 
-export async function deleteReward(id) {
-  if (!confirm('Delete this rewards entry?')) return;
+export async function deleteReward() {
+  const id = document.getElementById('reward-id').value;
+  if (!id) { closeRewardModal(); return; }
+  if (!confirm('Delete the rewards setup for this card? Transactions are untouched.')) return;
   await deleteDoc(doc(db, 'rewardsTracker', id));
+  closeRewardModal();
   loadRewards();
 }
 

@@ -471,6 +471,60 @@ body {
 .vt-apply-pick { display: flex; gap: 8px; align-items: center; flex: 1; cursor: pointer; font-size: 13px; }
 .vt-apply-cash { width: 140px; }
 
+/* ── Rewards tab ── */
+.rewards-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 14px; }
+.rewards-filter-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.rwd-preset {
+  border: 1px solid var(--border); background: var(--card); color: var(--text-sec);
+  border-radius: 14px; padding: 5px 12px; font-size: 12px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
+.rwd-preset:hover { border-color: var(--terra); color: var(--text); }
+.rwd-preset.active { background: var(--terra); color: #fff; border-color: var(--terra); }
+.rewards-filter-custom { display: flex; gap: 10px; align-items: center; }
+.rewards-filter-custom label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; color: var(--text-sec);
+}
+.rewards-filter-custom input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px;
+  font-family: inherit; font-size: 12px;
+}
+
+.rewards-period-note { color: var(--text-sec); font-size: 12px; margin-bottom: 12px; }
+.rwd-auto-key {
+  background: var(--badge-green-bg); color: var(--badge-green-txt);
+  padding: 1px 6px; border-radius: 4px; font-weight: 700;
+}
+
+.rewards-table th.rwd-num, .rewards-table td.rwd-num { text-align: right; }
+.rewards-table th.rwd-earned-col,
+.rewards-table tbody td.rwd-earned-col { background: #eef4ee; }
+.rewards-table tr:hover td.rwd-earned-col { background: #e7efe7; }
+.rwd-row { cursor: pointer; }
+.rwd-card-name { font-weight: 700; }
+.rwd-card-type { font-size: 11px; color: var(--text-sec); }
+.rwd-setup { color: var(--terra); font-weight: 700; }
+.rwd-override {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
+  background: var(--badge-orange-bg); color: var(--badge-orange-txt);
+  padding: 1px 5px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
+}
+.rewards-table .rwd-total-row td {
+  font-weight: 800; border-top: 2px solid var(--border); background: #faf3ec;
+}
+.rewards-table .rwd-total-row td.rwd-earned-col { background: #e7efe7; }
+
+.label-hint { font-weight: 400; color: var(--text-sec); font-size: 11px; }
+.rwd-redemption-row {
+  display: grid; grid-template-columns: 1.2fr 1fr 1.7fr auto;
+  gap: 6px; align-items: center; margin-bottom: 6px;
+}
+.rwd-redemption-row input {
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+  font-family: inherit; font-size: 13px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 600px) {
   .main-content { padding: 14px; }

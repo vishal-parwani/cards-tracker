@@ -5,7 +5,7 @@ import { loadDashboard } from './dashboard.js';
 import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
 import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepReceived, clearAepReceived } from './aep-ledger.js';
-import { loadRewards, openAddRewardModal, openEditRewardModal, saveReward, deleteReward, closeRewardModal } from './rewards.js';
+import { loadRewards, setRewardsPreset, setRewardsCustom, openEditRewardModal, saveReward, deleteReward, closeRewardModal, addRedemptionRow } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, openEditAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
 
 // Expose handlers to HTML onclick attributes
@@ -23,7 +23,6 @@ window.unlinkVtChildFromCredit = unlinkVtChildFromCredit;
 window.openMarkAepReceivedModal = openMarkAepReceivedModal;
 window.openAepDetailModal = openAepDetailModal;
 window.openEditRewardModal = openEditRewardModal;
-window.deleteReward = deleteReward;
 window.openAddCardModal  = openAddCardModal;
 window.openEditCardModal = openEditCardModal;
 window.openAddAddOnModal = openAddAddOnModal;
@@ -108,9 +107,19 @@ document.getElementById('save-aep-received-btn').addEventListener('click', saveA
 document.getElementById('clear-aep-received-btn').addEventListener('click', clearAepReceived);
 
 // Rewards
-document.getElementById('add-reward-btn').addEventListener('click', openAddRewardModal);
+document.querySelectorAll('.rwd-preset').forEach(btn => {
+  btn.addEventListener('click', () => setRewardsPreset(btn.dataset.preset));
+});
+document.getElementById('rewards-from').addEventListener('change', setRewardsCustom);
+document.getElementById('rewards-to').addEventListener('change', setRewardsCustom);
 document.getElementById('save-reward-btn').addEventListener('click', saveReward);
 document.getElementById('cancel-reward-btn').addEventListener('click', closeRewardModal);
+document.getElementById('cancel-reward-btn-2').addEventListener('click', closeRewardModal);
+document.getElementById('delete-reward-btn').addEventListener('click', deleteReward);
+document.getElementById('reward-add-redemption-btn').addEventListener('click', addRedemptionRow);
+document.getElementById('reward-redemptions').addEventListener('click', e => {
+  if (e.target.classList.contains('rwd-red-remove')) e.target.closest('.rwd-redemption-row').remove();
+});
 
 // Settings
 document.getElementById('save-card-btn').addEventListener('click', saveCard);

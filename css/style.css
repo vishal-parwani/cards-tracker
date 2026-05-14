@@ -528,8 +528,110 @@ body {
 /* ── Responsive ── */
 @media (max-width: 600px) {
   .main-content { padding: 14px; }
-  .cards-grid    { grid-template-columns: 1fr 1fr; }
-  .trackers-grid { grid-template-columns: 1fr; }
-  .four-col      { grid-template-columns: 1fr 1fr; }
-  .data-table th, .data-table td { padding: 8px 10px; }
+
+  /* Dashboard / Settings grids */
+  .cards-grid         { grid-template-columns: 1fr; }
+  .trackers-grid      { grid-template-columns: 1fr; }
+  .charts-grid-donuts { grid-template-columns: 1fr; }
+  .four-col           { grid-template-columns: 1fr 1fr; }
+  .chart-card         { padding: 14px; }
+  .chart-canvas-donut { height: 220px; }
+
+  /* ── Data tables → stacked cards ──
+     thead is hidden; each <tr> becomes a card and each <td> a
+     label/value row driven by the td's data-label attribute. */
+  .table-wrap { overflow-x: visible; }
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td { display: block; width: 100%; }
+  .data-table { border: none; background: none; box-shadow: none; border-radius: 0; }
+  .data-table thead { display: none; }
+  .data-table tr {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 6px rgba(92,61,46,0.08);
+    margin-bottom: 10px;
+    padding: 4px 14px;
+  }
+  .data-table tr:hover td { background: none; }
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    width: auto;
+    padding: 7px 0;
+    border-top: none;
+    border-bottom: 1px solid #f5ede4;
+    white-space: normal;
+    text-align: right;
+  }
+  .data-table tr td:last-child { border-bottom: none; }
+  .data-table td:empty { display: none; }
+  .data-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-sec);
+  }
+  .data-table td[data-label=""]::before { content: none; }
+  .data-table td.actions-cell { justify-content: flex-end; gap: 4px; }
+  .data-table td.actions-cell .btn-icon { padding: 8px; font-size: 17px; opacity: 0.7; }
+
+  /* description wraps fully in card mode */
+  .desc-cell { max-width: none; }
+  .desc-text { white-space: normal; overflow: visible; text-overflow: clip; }
+
+  /* VT parent/child desktop chrome that doesn't apply in card mode */
+  .data-table .vt-parent-row td,
+  .data-table .vt-child-row td { border-top: none; }
+  .data-table .vt-child-desc { padding-left: 0 !important; }
+
+  /* Rewards: card name/type sits as a card header, not a label/value row */
+  .rewards-table td:first-child { display: block; text-align: left; }
+  .rewards-table td:first-child::before { content: none; }
+
+  /* ── Transactions — bespoke card via grid on the <tr> ── */
+  .txn-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    grid-template-areas:
+      "date date amount"
+      "desc desc desc"
+      "card cat  act"
+      "pts  tag  act";
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: baseline;
+    padding: 12px 14px;
+  }
+  .txn-table td {
+    display: block;
+    width: auto;          /* reset desktop fixed widths above */
+    border-bottom: none;
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+  }
+  .txn-table td::before { content: none; }
+  .txn-table td:nth-child(1) { grid-area: date;   width: auto; font-size: 12px; font-weight: 700; color: var(--text-sec); }
+  .txn-table td:nth-child(2) { grid-area: card;   width: auto; font-size: 12px; font-weight: 700; color: var(--text); }
+  .txn-table td:nth-child(3) { grid-area: desc;   font-size: 14px; font-weight: 700; padding: 5px 0 3px; }
+  .txn-table td:nth-child(4) { grid-area: cat;    font-size: 12px; font-weight: 600; color: var(--text-sec); }
+  .txn-table td:nth-child(5) { grid-area: amount; width: auto; text-align: right; font-size: 16px; font-weight: 800; }
+  .txn-table td:nth-child(6) { grid-area: pts;    width: auto; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-sec); }
+  .txn-table td:nth-child(6):not(:empty)::before { content: "Pts "; }
+  .txn-table td:nth-child(7) { grid-area: tag;    width: auto; font-size: 11px; font-weight: 700; color: var(--text-sec); }
+  .txn-table td:last-child {
+    grid-area: act; width: auto;
+    align-self: center; justify-self: end;
+    display: flex; gap: 2px;
+  }
+  .txn-table td:last-child .btn-icon { padding: 8px; font-size: 17px; opacity: 0.7; }
 }

@@ -82,13 +82,13 @@ function renderVoucherTrades(parents, childrenByParent, legacy) {
 function renderLegacyRow(t, showCash) {
   return `
     <tr class="${t.status === 'Pending' ? 'pending-row' : ''}">
-      <td>${formatDate(t.purchaseDate)}</td>
-      <td>${t.card || ''}</td>
-      <td>${t.description || ''}</td>
-      <td>${formatCurrency(t.purchaseAmount)}</td>
-      ${showCash ? `<td>${t.cashReceived ? formatCurrency(t.cashReceived) : '—'}</td>` : ''}
-      <td><span class="status-badge ${t.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${t.status}</span></td>
-      <td class="actions-cell">
+      <td data-label="Date">${formatDate(t.purchaseDate)}</td>
+      <td data-label="Card">${t.card || ''}</td>
+      <td data-label="Description">${t.description || ''}</td>
+      <td data-label="Amount">${formatCurrency(t.purchaseAmount)}</td>
+      ${showCash ? `<td data-label="Cash / Haircut">${t.cashReceived ? formatCurrency(t.cashReceived) : '—'}</td>` : ''}
+      <td data-label="Status"><span class="status-badge ${t.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${t.status}</span></td>
+      <td class="actions-cell" data-label="Action">
         ${t.status === 'Pending' ? `<button class="btn-icon" title="Mark Traded" onclick="window.openMarkTradedModal('${t.id}')">✓</button>` : ''}
         <button class="btn-icon" title="Edit" onclick="window.openEditTradeModal('${t.id}')">✏️</button>
       </td>
@@ -108,13 +108,13 @@ function renderParentRows(parent, children, showCash) {
       : '—';
     return `
       <tr class="${c.status === 'Pending' ? 'pending-row' : ''} vt-parent-row">
-        <td>${formatDate(parent.purchaseDate)}</td>
-        <td>${parent.card || ''}</td>
-        <td><strong>${parent.description || ''}</strong>${c.description && c.description !== parent.description ? ` <span class="vt-split-count">· ${c.description}</span>` : ''}</td>
-        <td>${formatCurrency(c.purchaseAmount)}</td>
-        ${showCash ? `<td>${cashCell}</td>` : ''}
-        <td><span class="status-badge ${c.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${c.status}</span></td>
-        <td class="actions-cell">
+        <td data-label="Date">${formatDate(parent.purchaseDate)}</td>
+        <td data-label="Card">${parent.card || ''}</td>
+        <td data-label="Description"><strong>${parent.description || ''}</strong>${c.description && c.description !== parent.description ? ` <span class="vt-split-count">· ${c.description}</span>` : ''}</td>
+        <td data-label="Amount">${formatCurrency(c.purchaseAmount)}</td>
+        ${showCash ? `<td data-label="Cash / Haircut">${cashCell}</td>` : ''}
+        <td data-label="Status"><span class="status-badge ${c.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${c.status}</span></td>
+        <td class="actions-cell" data-label="Action">
           <button class="btn-icon" title="${c.status === 'Traded' ? 'Edit settlement' : 'Settle'}" onclick="window.openSettleVtModal('${c.id}')">✓</button>
           <button class="btn-icon" title="Edit splits" onclick="window.openEditSplitsModal('${parent.id}')">✏️</button>
           <button class="btn-icon" title="Delete" onclick="window.deleteVtParent('${parent.id}')">🗑️</button>
@@ -129,13 +129,13 @@ function renderParentRows(parent, children, showCash) {
 
   const parentRow = `
     <tr class="${status === 'Pending' ? 'pending-row' : ''} vt-parent-row">
-      <td>${formatDate(parent.purchaseDate)}</td>
-      <td>${parent.card || ''}</td>
-      <td><strong>${parent.description || ''}</strong></td>
-      <td>${formatCurrency(parent.purchaseAmount)}</td>
-      ${showCash ? `<td>${haircutCell}</td>` : ''}
-      <td><span class="status-badge ${status === 'Pending' ? 'badge-orange' : 'badge-green'}">${status}</span></td>
-      <td class="actions-cell">
+      <td data-label="Date">${formatDate(parent.purchaseDate)}</td>
+      <td data-label="Card">${parent.card || ''}</td>
+      <td data-label="Description"><strong>${parent.description || ''}</strong></td>
+      <td data-label="Amount">${formatCurrency(parent.purchaseAmount)}</td>
+      ${showCash ? `<td data-label="Cash / Haircut">${haircutCell}</td>` : ''}
+      <td data-label="Status"><span class="status-badge ${status === 'Pending' ? 'badge-orange' : 'badge-green'}">${status}</span></td>
+      <td class="actions-cell" data-label="Action">
         <button class="btn-icon" title="Edit splits" onclick="window.openEditSplitsModal('${parent.id}')">✏️</button>
         <button class="btn-icon" title="Delete" onclick="window.deleteVtParent('${parent.id}')">🗑️</button>
       </td>
@@ -148,13 +148,13 @@ function renderParentRows(parent, children, showCash) {
       : '—';
     return `
       <tr class="vt-child-row ${c.status === 'Pending' ? 'pending-row' : ''}">
-        <td>${c.tradeDate ? formatDate(c.tradeDate) : '↳'}</td>
-        <td></td>
-        <td class="vt-child-desc">${c.description || ''}</td>
-        <td>${formatCurrency(c.purchaseAmount)}</td>
-        ${showCash ? `<td>${cashCell}</td>` : ''}
-        <td><span class="status-badge ${c.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${c.status}</span></td>
-        <td class="actions-cell">
+        <td data-label="Date">${c.tradeDate ? formatDate(c.tradeDate) : '↳'}</td>
+        <td data-label="Card"></td>
+        <td class="vt-child-desc" data-label="Description">${c.description || ''}</td>
+        <td data-label="Amount">${formatCurrency(c.purchaseAmount)}</td>
+        ${showCash ? `<td data-label="Cash / Haircut">${cashCell}</td>` : ''}
+        <td data-label="Status"><span class="status-badge ${c.status === 'Pending' ? 'badge-orange' : 'badge-green'}">${c.status}</span></td>
+        <td class="actions-cell" data-label="Action">
           <button class="btn-icon" title="${c.status === 'Traded' ? 'Edit settlement' : 'Settle'}" onclick="window.openSettleVtModal('${c.id}')">✓</button>
         </td>
       </tr>

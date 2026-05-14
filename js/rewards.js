@@ -181,9 +181,9 @@ function renderRewards(rows, period) {
                 r.pointsType || (r.configured ? '' : '<span class="rwd-setup">tap to set up</span>')
               }</div>
             </td>
-            <td class="rwd-num rwd-earned-col">${fmt(r.earned)}</td>
-            <td class="rwd-num">${r.configured ? fmt(r.redeemed) : '—'}</td>
-            <td class="rwd-num">${
+            <td class="rwd-num rwd-earned-col" data-label="Earned">${fmt(r.earned)}</td>
+            <td class="rwd-num" data-label="Redeemed">${r.configured ? fmt(r.redeemed) : '—'}</td>
+            <td class="rwd-num" data-label="Closing Balance">${
               r.closing != null ? `<strong>${fmt(r.closing)}</strong>` : '—'
             }${
               r.closingOverridden ? '<span class="rwd-override" title="Manually overridden">override</span>' : ''
@@ -192,9 +192,9 @@ function renderRewards(rows, period) {
         `).join('')}
         <tr class="rwd-total-row">
           <td>All cards</td>
-          <td class="rwd-num rwd-earned-col">${fmt(totals.earned)}</td>
-          <td class="rwd-num">${fmt(totals.redeemed)}</td>
-          <td class="rwd-num">${fmt(totals.closing)}</td>
+          <td class="rwd-num rwd-earned-col" data-label="Earned">${fmt(totals.earned)}</td>
+          <td class="rwd-num" data-label="Redeemed">${fmt(totals.redeemed)}</td>
+          <td class="rwd-num" data-label="Closing Balance">${fmt(totals.closing)}</td>
         </tr>
       </tbody>
     </table>

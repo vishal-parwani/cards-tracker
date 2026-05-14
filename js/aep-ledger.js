@@ -190,13 +190,13 @@ function renderRow(r) {
   }
   return `
     <tr>
-      <td><strong>${r.month}</strong></td>
-      <td>${formatCurrency(c.eligibleSpend)}</td>
-      <td>${c.band}</td>
-      <td>${calcStr}</td>
-      <td>${receivedStr}</td>
-      <td>${statusBadge}</td>
-      <td class="actions-cell">
+      <td data-label="Month"><strong>${r.month}</strong></td>
+      <td data-label="Eligible Spend">${formatCurrency(c.eligibleSpend)}</td>
+      <td data-label="Band">${c.band}</td>
+      <td data-label="Calculated">${calcStr}</td>
+      <td data-label="Received">${receivedStr}</td>
+      <td data-label="Status">${statusBadge}</td>
+      <td class="actions-cell" data-label="Action">
         <button class="btn-icon" title="Mark / Edit Received" onclick="window.openMarkAepReceivedModal('${r.id}')">✓</button>
         <button class="btn-icon" title="View calculation" onclick="window.openAepDetailModal('${r.id}')">🔍</button>
       </td>

@@ -139,3 +139,13 @@ document.addEventListener('keydown', e => {
     document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(el => el.classList.add('hidden'));
   }
 });
+
+// PWA: register the app-shell service worker.
+// app.js only runs after its CDN module imports resolve, so the window
+// 'load' event may already have fired by now — register directly if so.
+if ('serviceWorker' in navigator) {
+  const registerSW = () =>
+    navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW registration failed:', err));
+  if (document.readyState === 'complete') registerSW();
+  else window.addEventListener('load', registerSW);
+}

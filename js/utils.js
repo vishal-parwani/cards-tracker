@@ -1,6 +1,10 @@
 export function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return '₹0';
-  return '₹' + Math.abs(amount).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  // Preserve the sign: a negative balance is a credit (e.g. Times Black
+  // overpaid / net-credit), not an outstanding due. Math.abs would hide it.
+  const rounded = Math.round(amount);
+  const sign = rounded < 0 ? '-' : '';
+  return sign + '₹' + Math.abs(rounded).toLocaleString('en-IN');
 }
 
 export function formatDate(date) {

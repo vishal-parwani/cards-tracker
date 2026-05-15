@@ -19,7 +19,7 @@ export function formatDate(date) {
 export function formatDateTime(date) {
   if (!date) return '';
   const d = date instanceof Date ? date : date.toDate();
-  const hasTime = d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0;
+  const hasTime = d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
   if (!hasTime) return formatDate(d);
   const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
   const timePart = d.toLocaleTimeString('en-IN', {

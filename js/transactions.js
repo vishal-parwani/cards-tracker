@@ -10,6 +10,7 @@ let modalCardsData = {};
 let stmtListenersAttached = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
+let editingOriginal = null;
 
 // ── Per-column filters ─────────────────────────────────────────────
 // One small filter popover per `<th>` on desktop; a single combined modal
@@ -420,6 +421,7 @@ function showTransactionModal(txn, cardsData) {
 
   document.getElementById('modal-title').textContent = isEdit ? 'Edit Transaction' : 'Add Transaction';
   document.getElementById('txn-id').value = txn?.id || '';
+  editingOriginal = isEdit ? { date: txn?.date || null, source: txn?.source || null } : null;
   document.getElementById('txn-date').value = date;
   document.getElementById('txn-card').innerHTML = cards.map(c => `<option value="${c}" ${txn?.card === c ? 'selected' : ''}>${c}</option>`).join('');
   document.getElementById('txn-description').value = txn?.description || '';
@@ -764,8 +766,18 @@ export async function saveTransaction() {
   if (isNaN(amount) || amount <= 0) { alert('Enter an amount greater than zero.'); return; }
   if (!category) { alert('Select a category.'); return; }
 
+  // Preserve original time if the user didn't change the date (otherwise
+  // `new Date('YYYY-MM-DD')` is midnight UTC and time is silently dropped).
+  let dateValue;
+  const origDate = editingOriginal?.date?.toDate ? editingOriginal.date.toDate() : null;
+  if (id && origDate && formatDateInput(origDate) === dateStr) {
+    dateValue = editingOriginal.date;
+  } else {
+    dateValue = Timestamp.fromDate(new Date(dateStr));
+  }
+
   const data = {
-    date: Timestamp.fromDate(new Date(dateStr)),
+    date: dateValue,
     card,
     description: document.getElementById('txn-description').value.trim(),
     category,
@@ -777,7 +789,7 @@ export async function saveTransaction() {
     reimbursable: document.getElementById('txn-reimbursable').checked,
     notes: document.getElementById('txn-notes').value.trim(),
     month: getMonthStr(new Date(dateStr)),
-    source: 'manual'
+    source: (id && editingOriginal?.source) ? editingOriginal.source : 'manual'
   };
 
   const ok = await guardWrite(

@@ -21,8 +21,10 @@
   <link rel="apple-touch-startup-image" media="screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="splash-1320x2868.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="js/vendor/flatpickr.min.css">
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/vendor/flatpickr.min.js"></script>
 </head>
 <body>
 
@@ -60,8 +62,9 @@
       <button class="tab-btn" data-tab="aep-ledger">AEP Ledger</button>
       <button class="tab-btn" data-tab="rewards">Rewards</button>
       <div id="tab-actions-transactions" class="tab-actions hidden">
-        <button id="filter-btn" class="btn btn-secondary btn-icon-btn" title="Filter">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <button id="clear-filters-btn" class="btn btn-secondary btn-sm hidden">Clear filters</button>
+        <button id="export-xlsx-btn" class="btn btn-secondary btn-icon-btn" title="Export to Excel" aria-label="Export to Excel">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
         <button id="add-txn-btn" class="btn btn-primary">+ Add</button>
       </div>
@@ -76,61 +79,23 @@
 
       <!-- Transactions -->
       <div id="tab-transactions" class="tab-panel hidden">
-        <div id="filter-panel" class="filter-panel hidden">
-          <div class="filter-grid">
-            <div class="form-row">
-              <label>Date From</label>
-              <input type="date" id="filter-date-from">
-            </div>
-            <div class="form-row">
-              <label>Date To</label>
-              <input type="date" id="filter-date-to">
-            </div>
-            <div class="form-row">
-              <label>Card</label>
-              <select id="filter-card">
-                <option value="">All Cards</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Category</label>
-              <select id="filter-category">
-                <option value="">All Categories</option>
-                <option>Food & Dining</option><option>Shopping</option><option>Travel</option>
-                <option>Entertainment</option><option>Groceries</option><option>Electronics</option>
-                <option>Rent</option><option>Utilities</option><option>Health & Medical</option>
-                <option>Insurance</option><option>Fuel</option><option>Education & Classes</option>
-                <option>Fees & Charges</option><option>Wallet Load</option><option>Miscellaneous</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Tag</label>
-              <select id="filter-tag">
-                <option value="">All Tags</option>
-                <option>SmartBuy</option><option>iShop</option><option>VERNOST</option>
-                <option>Grab Deals</option><option>AEP Ineligible</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Description</label>
-              <input type="text" id="filter-description" placeholder="Search...">
-            </div>
-          </div>
-          <div class="filter-actions">
-            <button id="clear-filter-btn" class="btn btn-secondary btn-sm">Clear</button>
-          </div>
+        <div id="txn-filter-mobile" class="txn-filter-mobile">
+          <button id="txn-filter-mobile-btn" class="btn btn-secondary btn-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filters
+          </button>
         </div>
         <div class="table-wrap">
           <table class="data-table txn-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Card</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Amount</th>
+                <th>Date <button class="th-filter" data-col="date" title="Filter Date" aria-label="Filter Date"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
+                <th>Card <button class="th-filter" data-col="card" title="Filter Card" aria-label="Filter Card"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
+                <th>Description <button class="th-filter" data-col="description" title="Filter Description" aria-label="Filter Description"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
+                <th>Category <button class="th-filter" data-col="category" title="Filter Category" aria-label="Filter Category"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
+                <th>Amount <button class="th-filter" data-col="amount" title="Filter Amount" aria-label="Filter Amount"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
                 <th>Points</th>
-                <th>Tag</th>
+                <th>Tag <button class="th-filter" data-col="tag" title="Filter Tag" aria-label="Filter Tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
                 <th></th>
               </tr>
             </thead>
@@ -271,6 +236,21 @@
       <div class="modal-footer">
         <button id="cancel-txn-btn-2" class="btn btn-secondary" onclick="document.getElementById('transaction-modal').classList.add('hidden')">Cancel</button>
         <button id="save-txn-btn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Column Filters (mobile combined sheet) -->
+  <div id="col-filter-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Filter Transactions</h3>
+        <button class="modal-close" onclick="document.getElementById('col-filter-modal').classList.add('hidden')">✕</button>
+      </div>
+      <div class="modal-body" id="col-filter-modal-body"></div>
+      <div class="modal-footer">
+        <button id="col-filter-clear-all-btn" class="btn btn-secondary" style="margin-right:auto">Clear all</button>
+        <button class="btn btn-primary" onclick="document.getElementById('col-filter-modal').classList.add('hidden')">Done</button>
       </div>
     </div>
   </div>
@@ -530,6 +510,17 @@
             <input type="checkbox" id="card-active-input" checked>
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
           </label>
+        </div>
+        <div class="form-row form-row-inline">
+          <label>Show on Dashboard</label>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="card-show-dashboard-input" checked>
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Dashboard Spend Tracker <span class="form-hint">(special cap / AEP widget)</span></label>
+          <select id="card-dashboard-widget-input"></select>
         </div>
       </div>
       <div class="modal-footer">

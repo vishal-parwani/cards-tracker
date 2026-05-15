@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION on any deploy that changes a shell file below; the
 // activate handler purges every cache that isn't the current version.
 
-const CACHE_VERSION = 'cards-v2';
+const CACHE_VERSION = 'cards-v3';
 
 const SHELL = [
   '/',
@@ -26,6 +26,9 @@ const SHELL = [
   '/js/settings.js',
   '/js/charts.js',
   '/js/utils.js',
+  '/js/points-config.js',
+  '/js/vendor/flatpickr.min.js',
+  '/js/vendor/flatpickr.min.css',
   '/icon-192.png',
   '/icon-512.png',
   '/icon-180.png',

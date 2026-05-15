@@ -1,6 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
+import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
 export async function loadDashboard() {
@@ -13,6 +14,8 @@ export async function loadDashboard() {
     const cards = Object.entries(cardsData).map(([name, val]) => ({
       name,
       cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
+      dashboardWidget: resolveDashboardWidget(name, val),
+      showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
     }));
 
     const mbAepSnap = await getDoc(doc(db, 'config', 'mbAep'));
@@ -31,7 +34,7 @@ export async function loadDashboard() {
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
-          ${sortedCards.map(r => renderCardBalanceCard(r)).join('')}
+          ${sortedCards.filter(r => r.showOnDashboard).map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
       <section class="section">
@@ -111,41 +114,34 @@ async function loadCardData(card, monthStart) {
   let magnusSmartBuyPts = 0;
   let epmIshopPts = 0;
 
-  const AEP_EXCLUDED = new Set([
-    'Fees & Charges', 'Fuel', 'Government Services', 'Insurance',
-    'Utilities & Telecom', 'Shopping - Jewellery', 'Wallet Load',
-  ]);
-
-  if (card.name === 'Magnus Burgundy') {
+  if (card.dashboardWidget === 'mbAep') {
     mtdTxns.forEach(t => {
       if (t.type === 'debit') {
         magnusMonthlySpend += t.amount || 0;
-        if (!AEP_EXCLUDED.has(t.category) && t.category !== 'Rent' && t.transactionTag !== 'AEP Ineligible') {
-          magnusAepEligible += t.amount || 0;
-        }
+        if (isAepEligible(t)) magnusAepEligible += t.amount || 0;
       }
     });
   }
 
   // SmartBuy / iShop caps reset on the calendar month.
-  // Accel rate = (total multiplier - 1) × base rate, applied per-txn.
-  if (card.name === 'Infinia') {
+  if (card.dashboardWidget === 'infiniaSb') {
     mtdTxns.forEach(t => {
       if (t.type === 'debit' && t.transactionTag === 'SmartBuy') {
-        magnusSmartBuyPts += Math.floor((t.amount || 0) / 150) * 20; // 4× accel of 5pts/₹150
+        magnusSmartBuyPts += smartBuyAccelPts(t.amount);
       }
     });
   }
 
-  // EPM iShop accel pts have a 10k/day cap. Bucket by date, cap each day at 10k,
-  // and flag overages — but only the first two chronologically, because 2×10k
-  // already exceeds the 18k monthly cap so further warnings are moot.
+  // EPM iShop accel pts have a 10k/day cap. Bucket by date, cap each day at
+  // the daily cap, and flag overages — but only the first two chronologically,
+  // because 2×daily-cap already exceeds the 18k monthly cap so further
+  // warnings are moot.
   const epmDailyOverages = [];
-  if (card.name === 'ICICI EPM') {
+  if (card.dashboardWidget === 'epmIshop') {
     const dailyAccel = new Map();
     mtdTxns.forEach(t => {
       if (t.type !== 'debit' || t.transactionTag !== 'iShop' || !t.date) return;
-      const accel = Math.floor((t.amount || 0) / 200) * 30; // 5× accel of 6pts/₹200
+      const accel = epmIshopAccelPts(t.amount);
       const d = t.date.toDate ? t.date.toDate() : new Date(t.date);
       const key = d.toISOString().slice(0, 10);
       dailyAccel.set(key, (dailyAccel.get(key) || 0) + accel);
@@ -153,8 +149,8 @@ async function loadCardData(card, monthStart) {
     const sortedDays = [...dailyAccel.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     const overagesAll = [];
     for (const [day, raw] of sortedDays) {
-      epmIshopPts += Math.min(raw, 10000);
-      if (raw > 10000) overagesAll.push({ day, raw });
+      epmIshopPts += Math.min(raw, ISHOP_DAILY_ACCEL_CAP);
+      if (raw > ISHOP_DAILY_ACCEL_CAP) overagesAll.push({ day, raw });
     }
     epmDailyOverages.push(...overagesAll.slice(0, 2));
   }
@@ -247,7 +243,7 @@ function renderTotalCard(cardResults) {
 }
 
 function renderCardBalanceCard(r) {
-  const aepRibbon = (r.name === 'Magnus Burgundy' && r.magnusAepEligible >= 150000)
+  const aepRibbon = (r.dashboardWidget === 'mbAep' && r.magnusAepEligible >= 150000)
     ? `<span class="aep-ribbon">AEP On ✓</span>` : '';
   return `
     <div class="balance-card">
@@ -269,28 +265,11 @@ function renderCardBalanceCard(r) {
 }
 
 function renderMagnusAep(cardResults, mbAep) {
-  const magnus = cardResults.find(r => r.name === 'Magnus Burgundy');
+  const magnus = cardResults.find(r => r.dashboardWidget === 'mbAep');
   if (!magnus) return '';
 
   const spend = magnus.magnusAepEligible;
-  const band1Max = mbAep.band1Max || 150000;
-  const band2Max = mbAep.band2Max || 1450000;
-  const band1Rate = mbAep.band1Rate || 12;
-  const band2Rate = mbAep.band2Rate || 35;
-  const band3Rate = mbAep.band3Rate || 12;
-
-  let pts = 0;
-  let band = 'Band 1';
-  if (spend <= band1Max) {
-    pts = Math.floor(spend / 200) * band1Rate;
-    band = 'Band 1';
-  } else if (spend <= band2Max) {
-    pts = Math.floor(band1Max / 200) * band1Rate + Math.floor((spend - band1Max) / 200) * band2Rate;
-    band = 'Band 2';
-  } else {
-    pts = Math.floor(band1Max / 200) * band1Rate + Math.floor((band2Max - band1Max) / 200) * band2Rate + Math.floor((spend - band2Max) / 200) * band3Rate;
-    band = 'Band 3';
-  }
+  const { band, calculatedPoints: pts, band1Max } = computeAepBands(spend, mbAep);
 
   const toThreshold = Math.max(0, band1Max - spend);
   const pct = Math.min(100, (spend / band1Max) * 100).toFixed(0);
@@ -314,11 +293,11 @@ function renderMagnusAep(cardResults, mbAep) {
 }
 
 function renderInfiniaSmartBuy(cardResults) {
-  const infinia = cardResults.find(r => r.name === 'Infinia');
+  const infinia = cardResults.find(r => r.dashboardWidget === 'infiniaSb');
   if (!infinia) return '';
 
   const accelPts = infinia.magnusSmartBuyPts;
-  const cap = 15000;
+  const cap = SMARTBUY_CAP;
   const remainingPts = Math.max(0, cap - accelPts);
   // ₹150 SmartBuy spend earns 20 accel pts → remaining spend = (remainingPts / 20) * 150
   const remainingSpend = Math.ceil((remainingPts / 20) * 150);
@@ -343,11 +322,11 @@ function renderInfiniaSmartBuy(cardResults) {
 }
 
 function renderEpmIshop(cardResults) {
-  const epm = cardResults.find(r => r.name === 'ICICI EPM');
+  const epm = cardResults.find(r => r.dashboardWidget === 'epmIshop');
   if (!epm) return '';
 
   const pts = epm.epmIshopPts;
-  const cap = 18000;
+  const cap = ISHOP_CAP;
   const remainingPts = Math.max(0, cap - pts);
   // ₹200 iShop spend earns 30 accel pts → remaining spend = (remainingPts / 30) * 200
   const remainingSpend = Math.ceil((remainingPts / 30) * 200);

@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatDate, formatDateInput } from './utils.js';
+import { formatDate, formatDateInput, guardWrite, showToast, initDatePickers } from './utils.js';
 
 // ── Period filter ─────────────────────────────────────────────────
 // One row per card; the filter just re-scopes the numbers. Earned is
@@ -215,7 +215,9 @@ function redemptionRowHtml(r = {}) {
 }
 
 export function addRedemptionRow() {
-  document.getElementById('reward-redemptions').insertAdjacentHTML('beforeend', redemptionRowHtml());
+  const container = document.getElementById('reward-redemptions');
+  container.insertAdjacentHTML('beforeend', redemptionRowHtml());
+  initDatePickers(container.lastElementChild);
 }
 
 export async function openEditRewardModal(card) {
@@ -239,6 +241,7 @@ export async function openEditRewardModal(card) {
   document.getElementById('reward-notes').value = e.notes || '';
   document.getElementById('reward-redemptions').innerHTML =
     (e.redemptions || []).map(redemptionRowHtml).join('');
+  initDatePickers(document.getElementById('reward-redemptions'));
   document.getElementById('delete-reward-btn').style.display = existing ? '' : 'none';
 
   document.getElementById('reward-modal').classList.remove('hidden');
@@ -252,12 +255,17 @@ export async function saveReward() {
   const openingDateStr = document.getElementById('reward-opening-date').value;
   const overrideStr = document.getElementById('reward-closing-override').value.trim();
 
+  const openingBalance = parseInt(document.getElementById('reward-opening').value) || 0;
+  if (openingBalance < 0) { alert('Opening balance cannot be negative.'); return; }
+  const closingOverride = overrideStr === '' ? null : (parseInt(overrideStr) || 0);
+  if (closingOverride != null && closingOverride < 0) { alert('Closing override cannot be negative.'); return; }
+
   const redemptions = [...document.querySelectorAll('#reward-redemptions .rwd-redemption-row')]
     .map(row => {
       const d = row.querySelector('.rwd-red-date').value;
       const pts = parseInt(row.querySelector('.rwd-red-points').value);
       const note = row.querySelector('.rwd-red-note').value.trim();
-      if (!d || !pts) return null;
+      if (!d || !pts || pts <= 0) return null;
       return { date: Timestamp.fromDate(new Date(d)), points: pts, note };
     })
     .filter(Boolean);
@@ -265,18 +273,20 @@ export async function saveReward() {
   const data = {
     card,
     pointsType: document.getElementById('reward-points-type').value.trim(),
-    openingBalance: parseInt(document.getElementById('reward-opening').value) || 0,
+    openingBalance,
     openingDate: openingDateStr ? Timestamp.fromDate(new Date(openingDateStr)) : null,
-    closingOverride: overrideStr === '' ? null : (parseInt(overrideStr) || 0),
+    closingOverride,
     redemptions,
     notes: document.getElementById('reward-notes').value.trim(),
   };
 
-  if (id) {
-    await updateDoc(doc(db, 'rewardsTracker', id), data);
-  } else {
-    await addDoc(collection(db, 'rewardsTracker'), data);
-  }
+  const ok = await guardWrite(
+    () => id
+      ? updateDoc(doc(db, 'rewardsTracker', id), data)
+      : addDoc(collection(db, 'rewardsTracker'), data),
+    'Save rewards setup'
+  );
+  if (!ok) return;
 
   closeRewardModal();
   loadRewards();
@@ -286,7 +296,7 @@ export async function deleteReward() {
   const id = document.getElementById('reward-id').value;
   if (!id) { closeRewardModal(); return; }
   if (!confirm('Delete the rewards setup for this card? Transactions are untouched.')) return;
-  await deleteDoc(doc(db, 'rewardsTracker', id));
+  if (!await guardWrite(() => deleteDoc(doc(db, 'rewardsTracker', id)), 'Delete rewards setup')) return;
   closeRewardModal();
   loadRewards();
 }

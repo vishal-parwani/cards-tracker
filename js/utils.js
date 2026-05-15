@@ -91,3 +91,50 @@ export function sumChildHaircut(children) {
     .filter(c => c.status === 'Traded')
     .reduce((s, c) => s + (c.haircut || 0), 0);
 }
+
+// ── Toast + write-error handling ──────────────────────────────────
+// A bare `await addDoc(...)` that rejects (network blip, rules denial)
+// otherwise fails silently — for a money tracker, a failed save that
+// looks successful is the worst outcome. Every write goes through
+// guardWrite so failures surface.
+export function showToast(message, type = 'error') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => toast.remove(), 300);
+  }, type === 'error' ? 6000 : 3000);
+}
+
+export async function guardWrite(operation, label = 'Save') {
+  try {
+    await operation();
+    return true;
+  } catch (e) {
+    console.error(`${label} failed:`, e);
+    showToast(`${label} failed: ${e.message || e}`, 'error');
+    return false;
+  }
+}
+
+// ── Date pickers ──────────────────────────────────────────────────
+// flatpickr (vendored, MIT) replaces the tiny native date popup with a
+// themed calendar. `dateFormat: Y-m-d` keeps the input .value in the
+// YYYY-MM-DD shape every caller already parses with `new Date(...)`.
+export function initDatePicker(el) {
+  if (!el || el._flatpickr || typeof flatpickr === 'undefined') return;
+  flatpickr(el, { dateFormat: 'Y-m-d', allowInput: true, disableMobile: true });
+}
+
+export function initDatePickers(root = document) {
+  root.querySelectorAll('input[type="date"]').forEach(initDatePicker);
+}

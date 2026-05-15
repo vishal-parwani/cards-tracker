@@ -1,5 +1,7 @@
-import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+import { guardWrite, showToast } from './utils.js';
+import { DASHBOARD_WIDGETS, resolveDashboardWidget } from './points-config.js';
 
 let _cardsCache = {};
 let _addonCache = {};
@@ -7,7 +9,11 @@ let _addonCache = {};
 // Normalize old flat format (integer) to new object format
 function normalizeCard(name, value) {
   if (typeof value === 'number') {
-    return { name, statementDate: value, billPaymentDate: null, bank: '', last4: '', active: true, dateHistory: [] };
+    return {
+      name, statementDate: value, billPaymentDate: null, bank: '', last4: '',
+      active: true, showOnDashboard: true,
+      dashboardWidget: resolveDashboardWidget(name, value), dateHistory: [],
+    };
   }
   return {
     name,
@@ -18,8 +24,16 @@ function normalizeCard(name, value) {
     pdfPassword:     value.pdfPassword     || '',
     forexRate:       value.forexRate       ?? null,
     active:          value.active          !== false,
+    showOnDashboard: value.showOnDashboard !== false,
+    dashboardWidget: resolveDashboardWidget(name, value),
     dateHistory:     value.dateHistory     || [],
   };
+}
+
+function populateWidgetSelect(selected) {
+  document.getElementById('card-dashboard-widget-input').innerHTML = DASHBOARD_WIDGETS
+    .map(w => `<option value="${w.id}"${w.id === (selected || '') ? ' selected' : ''}>${w.label}</option>`)
+    .join('');
 }
 
 export async function loadSettings() {
@@ -117,6 +131,8 @@ export function openAddCardModal() {
   document.getElementById('card-bill-input').value = '';
   document.getElementById('card-forex-input').value = '';
   document.getElementById('card-active-input').checked = true;
+  document.getElementById('card-show-dashboard-input').checked = true;
+  populateWidgetSelect('');
   document.getElementById('card-modal').classList.remove('hidden');
 }
 
@@ -133,6 +149,8 @@ export function openEditCardModal(name) {
   document.getElementById('card-bill-input').value = card.billPaymentDate || '';
   document.getElementById('card-forex-input').value = card.forexRate != null ? (card.forexRate * 100).toFixed(1) : '';
   document.getElementById('card-active-input').checked = card.active !== false;
+  document.getElementById('card-show-dashboard-input').checked = card.showOnDashboard !== false;
+  populateWidgetSelect(card.dashboardWidget || '');
   document.getElementById('card-modal').classList.remove('hidden');
 }
 
@@ -147,6 +165,8 @@ export async function saveCard() {
   const forexRawInput   = document.getElementById('card-forex-input').value.trim();
   const forexRate       = forexRawInput !== '' ? parseFloat(forexRawInput) / 100 : null;
   const active          = document.getElementById('card-active-input').checked;
+  const showOnDashboard = document.getElementById('card-show-dashboard-input').checked;
+  const dashboardWidget = document.getElementById('card-dashboard-widget-input').value;
 
   if (!newName) { alert('Card name is required.'); return; }
   if (statementDate && (statementDate < 1 || statementDate > 31)) { alert('Statement date must be 1–31.'); return; }
@@ -156,6 +176,12 @@ export async function saveCard() {
   const cardsRef = doc(db, 'config', 'cards');
   const snap = await getDoc(cardsRef);
   const raw = snap.exists() ? snap.data() : {};
+
+  const isRename = originalName && originalName !== newName;
+  if ((!originalName || isRename) && raw[newName]) {
+    alert(`A card named "${newName}" already exists.`);
+    return;
+  }
 
   // Build updated card object
   const existing = originalName ? normalizeCard(originalName, raw[originalName] ?? {}) : null;
@@ -175,17 +201,74 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, dashboardWidget, dateHistory };
 
-  // Remove old key if name changed
-  if (originalName && originalName !== newName) {
-    delete raw[originalName];
-  }
+  if (isRename && !confirm(
+    `Rename "${originalName}" to "${newName}"? This also updates all of its ` +
+    `transactions, voucher trades, rewards entries, and add-on card mappings.`
+  )) return;
+
+  if (isRename) delete raw[originalName];
   raw[newName] = updatedCard;
 
-  await setDoc(cardsRef, raw);
+  const ok = await guardWrite(
+    () => isRename ? cascadeRename(originalName, newName, raw) : setDoc(cardsRef, raw),
+    isRename ? 'Rename card' : 'Save card'
+  );
+  if (!ok) return;
+
+  if (isRename) showToast(`Renamed to "${newName}".`, 'success');
   closeCardModal();
   loadSettings();
+}
+
+// Rename a card everywhere it's referenced by name: the config/cards key,
+// plus every transactions / voucherTrades / rewardsTracker doc and any
+// add-on card mainCard pointer. `rawCardsWithNewKey` is config/cards with
+// the key already swapped. dashboardWidget travels with the card for free
+// since it lives on the card object being re-keyed.
+async function cascadeRename(oldName, newName, rawCardsWithNewKey) {
+  const [txnSnap, vtSnap, rtSnap, addonSnap] = await Promise.all([
+    getDocs(query(collection(db, 'transactions'),  where('card', '==', oldName))),
+    getDocs(query(collection(db, 'voucherTrades'), where('card', '==', oldName))),
+    getDocs(query(collection(db, 'rewardsTracker'), where('card', '==', oldName))),
+    getDoc(doc(db, 'config', 'addOnCards')),
+  ]);
+
+  const updates = [];
+  [...txnSnap.docs, ...vtSnap.docs, ...rtSnap.docs].forEach(d =>
+    updates.push({ ref: d.ref, kind: 'update', data: { card: newName } }));
+
+  if (addonSnap.exists()) {
+    const addon = addonSnap.data() || {};
+    let touched = false;
+    for (const k of Object.keys(addon)) {
+      const v = addon[k];
+      const main = typeof v === 'string' ? v : (v && v.mainCard);
+      if (main === oldName) {
+        addon[k] = typeof v === 'string' ? newName : { ...v, mainCard: newName };
+        touched = true;
+      }
+    }
+    if (touched) updates.push({ ref: doc(db, 'config', 'addOnCards'), kind: 'set', data: addon });
+  }
+
+  // Commit in chunks (Firestore batch limit is 500). The config/cards key
+  // swap leads the first batch so the rename is never applied without it.
+  const CHUNK = 400;
+  let batch = writeBatch(db);
+  batch.set(doc(db, 'config', 'cards'), rawCardsWithNewKey);
+  let count = 1;
+  for (const u of updates) {
+    if (u.kind === 'set') batch.set(u.ref, u.data);
+    else batch.update(u.ref, u.data);
+    if (++count >= CHUNK) {
+      await batch.commit();
+      batch = writeBatch(db);
+      count = 0;
+    }
+  }
+  if (count > 0) await batch.commit();
 }
 
 export function closeCardModal() {
@@ -230,7 +313,7 @@ export async function saveAddOnCard() {
   const ref  = doc(db, 'config', 'addOnCards');
   const snap = await getDoc(ref);
   const data = snap.exists() ? (snap.data() || {}) : {};
-  await setDoc(ref, { ...data, [last4]: { mainCard, holderName } });
+  if (!await guardWrite(() => setDoc(ref, { ...data, [last4]: { mainCard, holderName } }), 'Save add-on card')) return;
   closeAddOnModal();
   loadSettings();
 }
@@ -241,7 +324,7 @@ export async function deleteAddOnCard(last4) {
   const snap = await getDoc(ref);
   const data = snap.exists() ? (snap.data() || {}) : {};
   delete data[last4];
-  await setDoc(ref, data);
+  if (!await guardWrite(() => setDoc(ref, data), 'Remove add-on card')) return;
   loadSettings();
 }
 

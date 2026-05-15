@@ -1,66 +1,36 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency, formatDate, formatDateTime, formatDateInput, getCurrentMonthStart, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus } from './utils.js';
+import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
+import { deriveTag, computePointsForTag } from './points-config.js';
 
 const PAGE_SIZE = 50;
 let lastVisible = null;
 let allLoaded = false;
-let currentFilter = { card: '', category: '' };
 let modalCardsData = {};
 let stmtListenersAttached = false;
-let activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
-let filterPanelInitialized = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
 
-// Base rates (per ₹X). Accel rates layered on by tag below.
-const CARD_POINTS_RATES = {
-  'Magnus Burgundy': { rate: 12, per: 200 },
-  'Infinia':         { rate: 5,  per: 150 },
-  'ICICI EPM':       { rate: 6,  per: 200 },
-  'Times Black':     { rate: 2,  per: 100 },
+// ── Per-column filters ─────────────────────────────────────────────
+// One small filter popover per `<th>` on desktop; a single combined modal
+// on mobile (thead is hidden in card-stacked mode). Both UIs read/write
+// the same `colFilters` state and call `applyColumnFilters` on change.
+const FILTER_COL_LABELS = {
+  date: 'Date', card: 'Card', description: 'Description',
+  category: 'Category', amount: 'Amount', tag: 'Tag',
 };
-const CARD_EXCLUDED_CATS = {
-  'Magnus Burgundy': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load', 'EMI']),
-  'Infinia':         new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load']),
-  'ICICI EPM':       new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
-  'Times Black':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
+const CATEGORY_OPTS = CATEGORIES;
+const TAG_OPTS = TRANSACTION_TAGS.filter(t => t !== '');
+let cardOpts = [];
+let columnFiltersInit = false;
+let colFilters = {
+  date: { from: '', to: '' },
+  card: [],
+  description: '',
+  category: [],
+  amount: { min: '', max: '' },
+  tag: [],
 };
-
-// Mirror processor's derive_transaction_tag(card, description).
-// Single source of truth: tag drives points. The processor and the UI
-// both derive the tag from card+description the same way so manual edits
-// stay consistent with automated writes.
-function deriveTag(card, description) {
-  const desc = (description || '').toUpperCase();
-  if (card === 'Infinia' && desc.includes('SMARTBUY')) return 'SmartBuy';
-  const stripped = desc.replace(/\s+/g, '');
-  if ((card === 'ICICI EPM' || card === 'Times Black') &&
-      (stripped.includes('ISHOP') || stripped.includes('REWARD360GLOB'))) {
-    return 'iShop';
-  }
-  return '';
-}
-
-// Compute points keyed off tag (uncapped — processor enforces monthly caps
-// at write time; UI shows the un-capped value as a guide).
-function computePointsForTag(card, amount, category, type, tag) {
-  if (type === 'credit') return 0;
-  const excl = CARD_EXCLUDED_CATS[card];
-  if (excl && excl.has(category)) return 0;
-  if (card === 'Infinia' && tag === 'SmartBuy') {
-    return Math.floor(amount / 150) * 25;  // 5x = base 5 + accel 20
-  }
-  if (card === 'ICICI EPM' && tag === 'iShop') {
-    const rate = category === 'Travel - Hotels' ? 72 : 36;  // 6x or 12x
-    return Math.floor(amount / 200) * rate;
-  }
-  if (card === 'Times Black' && tag === 'iShop') {
-    return Math.floor(amount / 100) * 12;  // 6x
-  }
-  const r = CARD_POINTS_RATES[card];
-  return r ? Math.floor(amount / r.per) * r.rate : 0;
-}
 
 function autoComputePoints() {
   if (pointsManuallyEdited) return;
@@ -100,7 +70,166 @@ window.showDescPopover = function(e, cell) {
 };
 
 function hasActiveFilters() {
-  return Object.values(activeFilters).some(v => v !== '');
+  const f = colFilters;
+  return !!(f.date.from || f.date.to || f.card.length || f.description ||
+           f.category.length || f.amount.min !== '' || f.amount.max !== '' ||
+           f.tag.length);
+}
+
+function colHasFilter(col) {
+  const f = colFilters;
+  switch (col) {
+    case 'date':        return !!(f.date.from || f.date.to);
+    case 'card':        return f.card.length > 0;
+    case 'description': return !!f.description;
+    case 'category':    return f.category.length > 0;
+    case 'amount':      return f.amount.min !== '' || f.amount.max !== '';
+    case 'tag':         return f.tag.length > 0;
+    default:            return false;
+  }
+}
+
+function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+function buildFilterControl(col) {
+  const f = colFilters;
+  if (col === 'date') {
+    return `
+      <div class="cf-field"><label>From</label><input type="date" class="cf-date-from" value="${f.date.from}"></div>
+      <div class="cf-field"><label>To</label><input type="date" class="cf-date-to" value="${f.date.to}"></div>`;
+  }
+  if (col === 'amount') {
+    return `
+      <div class="cf-field"><label>Min ₹</label><input type="number" class="cf-amt-min" min="0" step="0.01" value="${f.amount.min}"></div>
+      <div class="cf-field"><label>Max ₹</label><input type="number" class="cf-amt-max" min="0" step="0.01" value="${f.amount.max}"></div>`;
+  }
+  if (col === 'description') {
+    return `<div class="cf-field"><label>Contains</label><input type="text" class="cf-desc" placeholder="Merchant…" value="${escAttr(f.description)}"></div>`;
+  }
+  // checklist: card / category / tag
+  const opts = col === 'card' ? cardOpts : col === 'category' ? CATEGORY_OPTS : TAG_OPTS;
+  const selected = f[col];
+  return `<div class="cf-checklist">${opts.map(o => `
+    <label class="cf-check"><input type="checkbox" value="${escAttr(o)}" ${selected.includes(o) ? 'checked' : ''}><span>${o}</span></label>`).join('')}</div>`;
+}
+
+function readFilterControl(col, root) {
+  const f = colFilters;
+  if (col === 'date') {
+    f.date.from = root.querySelector('.cf-date-from').value;
+    f.date.to   = root.querySelector('.cf-date-to').value;
+  } else if (col === 'amount') {
+    f.amount.min = root.querySelector('.cf-amt-min').value;
+    f.amount.max = root.querySelector('.cf-amt-max').value;
+  } else if (col === 'description') {
+    f.description = root.querySelector('.cf-desc').value.trim();
+  } else {
+    f[col] = [...root.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+  }
+}
+
+function clearColumn(col) {
+  if (col === 'date') colFilters.date = { from: '', to: '' };
+  else if (col === 'amount') colFilters.amount = { min: '', max: '' };
+  else if (col === 'description') colFilters.description = '';
+  else colFilters[col] = [];
+}
+
+function applyColumnFilters() {
+  if (hasActiveFilters()) loadFilteredTransactions();
+  else loadTransactions(true);
+}
+
+function updateFilterIcons() {
+  document.querySelectorAll('.th-filter').forEach(btn => {
+    btn.classList.toggle('cf-on', colHasFilter(btn.dataset.col));
+  });
+  document.getElementById('clear-filters-btn')?.classList.toggle('hidden', !hasActiveFilters());
+  document.getElementById('txn-filter-mobile-btn')?.classList.toggle('cf-on', hasActiveFilters());
+}
+
+function openColFilterPopover(btn, col) {
+  document.querySelector('.col-filter-pop')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'col-filter-pop';
+  pop.innerHTML = `
+    <div class="cf-title">${FILTER_COL_LABELS[col]}</div>
+    <div class="cf-body">${buildFilterControl(col)}</div>
+    <div class="cf-pop-actions"><button type="button" class="btn btn-sm btn-secondary cf-clear">Clear</button></div>
+  `;
+  document.body.appendChild(pop);
+  initDatePickers(pop);
+  const rect = btn.getBoundingClientRect();
+  pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  pop.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - pop.offsetWidth - 8) + 'px';
+
+  const apply = () => { readFilterControl(col, pop); applyColumnFilters(); updateFilterIcons(); };
+  pop.addEventListener('input', apply);
+  pop.addEventListener('change', apply);
+  pop.querySelector('.cf-clear').addEventListener('click', () => {
+    clearColumn(col);
+    pop.remove();
+    applyColumnFilters();
+    updateFilterIcons();
+  });
+
+  const closer = ev => {
+    if (!pop.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)
+        && !ev.target.closest('.flatpickr-calendar')) {
+      pop.remove();
+      document.removeEventListener('click', closer);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closer), 0);
+}
+
+function openColFilterModal() {
+  const body = document.getElementById('col-filter-modal-body');
+  body.innerHTML = ['date','card','description','category','amount','tag'].map(col => `
+    <div class="cf-section" data-col="${col}">
+      <div class="cf-title">${FILTER_COL_LABELS[col]}</div>
+      ${buildFilterControl(col)}
+    </div>`).join('');
+  initDatePickers(body);
+  document.getElementById('col-filter-modal').classList.remove('hidden');
+}
+
+function onModalFilterChange(e) {
+  const section = e.target.closest('.cf-section');
+  if (!section) return;
+  readFilterControl(section.dataset.col, section);
+  applyColumnFilters();
+  updateFilterIcons();
+}
+
+export function clearAllFilters() {
+  colFilters = {
+    date: { from: '', to: '' }, card: [], description: '',
+    category: [], amount: { min: '', max: '' }, tag: [],
+  };
+  updateFilterIcons();
+  loadTransactions(true);
+}
+
+async function initColumnFilters() {
+  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+  cardOpts = cardsSnap.exists() ? Object.keys(cardsSnap.data()).sort() : [];
+
+  document.querySelectorAll('.th-filter').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openColFilterPopover(btn, btn.dataset.col);
+    });
+  });
+  document.getElementById('txn-filter-mobile-btn')?.addEventListener('click', openColFilterModal);
+  const body = document.getElementById('col-filter-modal-body');
+  body?.addEventListener('input', onModalFilterChange);
+  body?.addEventListener('change', onModalFilterChange);
+  document.getElementById('col-filter-clear-all-btn')?.addEventListener('click', () => {
+    clearAllFilters();
+    document.getElementById('col-filter-modal').classList.add('hidden');
+  });
+  document.getElementById('clear-filters-btn')?.addEventListener('click', clearAllFilters);
 }
 
 function computeStatementPeriod(dateStr, cutoffDay) {
@@ -147,50 +276,47 @@ function ensureStmtListeners() {
 }
 
 export async function loadTransactions(reset = false) {
-  if (!filterPanelInitialized) {
-    await initFilterPanel();
-    filterPanelInitialized = true;
+  try {
+    if (!columnFiltersInit) {
+      await initColumnFilters();
+      columnFiltersInit = true;
+    }
+
+    if (hasActiveFilters()) {
+      await loadFilteredTransactions();
+      return;
+    }
+
+    if (reset) {
+      lastVisible = null;
+      allLoaded = false;
+      document.getElementById('transactions-list').innerHTML =
+        '<tr><td colspan="8" class="loading">Loading…</td></tr>';
+    }
+    if (allLoaded) return;
+
+    const firstPage = !lastVisible;
+    const q = firstPage
+      ? query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(PAGE_SIZE))
+      : query(collection(db, 'transactions'), orderBy('date', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
+
+    const snap = await getDocs(q);
+    if (snap.docs.length < PAGE_SIZE) allLoaded = true;
+    if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1];
+
+    if (firstPage) document.getElementById('transactions-list').innerHTML = '';
+
+    const txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const vtChildMap = await buildVtEnrichment(txns);
+    renderTransactions(txns, firstPage && txns.length === 0, vtChildMap);
+
+    document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
+  } catch (e) {
+    console.error('Load transactions failed:', e);
+    document.getElementById('transactions-list').innerHTML =
+      `<tr><td colspan="8" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+    document.getElementById('load-more-btn').style.display = 'none';
   }
-
-  if (hasActiveFilters()) {
-    await loadFilteredTransactions();
-    return;
-  }
-
-  if (reset) {
-    lastVisible = null;
-    allLoaded = false;
-    document.getElementById('transactions-list').innerHTML = '';
-  }
-  if (allLoaded) return;
-
-  const monthStart = getCurrentMonthStart();
-  let q;
-
-  if (!lastVisible) {
-    q = query(
-      collection(db, 'transactions'),
-      orderBy('date', 'desc'),
-      limit(PAGE_SIZE)
-    );
-  } else {
-    q = query(
-      collection(db, 'transactions'),
-      orderBy('date', 'desc'),
-      startAfter(lastVisible),
-      limit(PAGE_SIZE)
-    );
-  }
-
-  const snap = await getDocs(q);
-  if (snap.docs.length < PAGE_SIZE) allLoaded = true;
-  if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1];
-
-  const txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const vtChildMap = await buildVtEnrichment(txns);
-  renderTransactions(txns, !lastVisible || snap.docs.length === 0, vtChildMap);
-
-  document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
 }
 
 async function buildVtEnrichment(txns) {
@@ -221,18 +347,9 @@ function vtChipFor(t, vtChildMap) {
   return '';
 }
 
-function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
-  const list = document.getElementById('transactions-list');
-  if (replace) list.innerHTML = '';
-
-  if (txns.length === 0 && replace) {
-    list.innerHTML = '<p class="empty">No transactions found.</p>';
-    return;
-  }
-
-  const rows = txns.map(t => {
-    const chip = vtChipFor(t, vtChildMap);
-    return `
+function rowHtml(t, vtChildMap = new Map()) {
+  const chip = vtChipFor(t, vtChildMap);
+  return `
     <tr data-id="${t.id}">
       <td>${formatDateTime(t.date)}</td>
       <td>${t.card || ''}</td>
@@ -250,9 +367,34 @@ function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
       </td>
     </tr>
   `;
-  }).join('');
+}
 
-  list.insertAdjacentHTML('beforeend', rows);
+function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
+  const list = document.getElementById('transactions-list');
+  if (replace) list.innerHTML = '';
+
+  if (txns.length === 0 && replace) {
+    list.innerHTML = '<tr><td colspan="8" class="empty">No transactions found.</td></tr>';
+    return;
+  }
+
+  list.insertAdjacentHTML('beforeend', txns.map(t => rowHtml(t, vtChildMap)).join(''));
+}
+
+// Optimistic-update helpers — keep the list rendered in place on edit/delete
+// instead of a full re-fetch + scroll reset. Adds with active filters still
+// trigger a full reload (the new row may not match), and same for edits that
+// might shift the row out of the current filtered/sorted view.
+async function patchRowInPlace(txn) {
+  const vtChildMap = await buildVtEnrichment([txn]);
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = rowHtml(txn, vtChildMap);
+  const existing = document.querySelector(`#transactions-list tr[data-id="${txn.id}"]`);
+  if (existing && tmp.firstElementChild) existing.replaceWith(tmp.firstElementChild);
+}
+
+function removeRowFromDom(id) {
+  document.querySelector(`#transactions-list tr[data-id="${id}"]`)?.remove();
 }
 
 export async function openAddTransaction() {
@@ -453,6 +595,7 @@ export async function saveVtSplits() {
   })).filter(s => !isNaN(s.amount));
 
   if (splits.length === 0) { alert('Add at least one split with an amount.'); return; }
+  if (splits.some(s => s.amount <= 0)) { alert('Each split amount must be greater than zero.'); return; }
 
   const txnSnap = await getDoc(doc(db, 'transactions', txnId));
   if (!txnSnap.exists()) return;
@@ -487,7 +630,7 @@ export async function saveVtSplits() {
     });
   }
   batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: parentRef.id });
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Save voucher trade')) return;
 
   document.getElementById('vt-split-modal').classList.add('hidden');
   // Refresh the txn modal's VT section so it shows the new linkage.
@@ -507,7 +650,7 @@ export async function unlinkVtFromTxn(txnId) {
   batch.delete(doc(db, 'voucherTrades', parentId));
   childSnap.docs.forEach(c => batch.delete(c.ref));
   batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: null });
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Unlink voucher trade')) return;
   renderVtSection({ id: txnId, ...txnSnap.data(), voucherTradeParentId: null });
   loadTransactions(true);
 }
@@ -567,7 +710,7 @@ export async function saveVtApply() {
     const cashInput = document.querySelector(`#vt-apply-list .vt-apply-cash[data-id="${id}"]`);
     const cash = parseFloat(cashInput.value);
     const amount = parseFloat(cb.dataset.amount);
-    if (isNaN(cash)) { alert('Enter cash received for every checked split.'); return; }
+    if (isNaN(cash) || cash < 0) { alert('Enter a non-negative cash amount for every checked split.'); return; }
     const { haircut, netPnl } = computeChildHaircutPnl(amount, cash);
     batch.update(doc(db, 'voucherTrades', id), {
       status: 'Traded',
@@ -580,7 +723,7 @@ export async function saveVtApply() {
     if (!linkedIds.includes(id)) linkedIds.push(id);
   }
   batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Apply credit to voucher trade')) return;
 
   document.getElementById('vt-apply-modal').classList.add('hidden');
   renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
@@ -604,7 +747,7 @@ export async function unlinkVtChildFromCredit(txnId, childId) {
     settlementTransactionId: null,
   });
   batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Revert voucher trade')) return;
   renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
   loadTransactions(true);
 }
@@ -613,17 +756,19 @@ export async function saveTransaction() {
   const id = document.getElementById('txn-id').value;
   const dateStr = document.getElementById('txn-date').value;
   const amount = parseFloat(document.getElementById('txn-amount').value);
+  const card = document.getElementById('txn-card').value;
+  const category = document.getElementById('txn-category').value;
 
-  if (!dateStr || isNaN(amount)) {
-    alert('Please fill in date and amount.');
-    return;
-  }
+  if (!dateStr) { alert('Pick a date.'); return; }
+  if (!card) { alert('Select a card.'); return; }
+  if (isNaN(amount) || amount <= 0) { alert('Enter an amount greater than zero.'); return; }
+  if (!category) { alert('Select a category.'); return; }
 
   const data = {
     date: Timestamp.fromDate(new Date(dateStr)),
-    card: document.getElementById('txn-card').value,
+    card,
     description: document.getElementById('txn-description').value.trim(),
-    category: document.getElementById('txn-category').value,
+    category,
     amount,
     type: document.getElementById('txn-type').value,
     pointsEarned: parseInt(document.getElementById('txn-points').value) || 0,
@@ -635,97 +780,116 @@ export async function saveTransaction() {
     source: 'manual'
   };
 
-  if (id) {
-    await updateDoc(doc(db, 'transactions', id), data);
-  } else {
-    await addDoc(collection(db, 'transactions'), data);
-  }
+  const ok = await guardWrite(
+    () => id
+      ? updateDoc(doc(db, 'transactions', id), data)
+      : addDoc(collection(db, 'transactions'), data),
+    id ? 'Update transaction' : 'Add transaction'
+  );
+  if (!ok) return;
 
+  showToast(id ? 'Transaction updated.' : 'Transaction added.', 'success');
   closeTransactionModal();
-  loadTransactions(true);
-}
 
-export async function deleteTransaction(id) {
-  if (!confirm('Delete this transaction?')) return;
-  await deleteDoc(doc(db, 'transactions', id));
-  loadTransactions(true);
-}
-
-async function loadFilteredTransactions() {
-  const list = document.getElementById('transactions-list');
-  list.innerHTML = '';
-  document.getElementById('load-more-btn').style.display = 'none';
-
-  const constraints = [orderBy('date', 'desc')];
-  if (activeFilters.dateFrom) {
-    constraints.push(where('date', '>=', Timestamp.fromDate(new Date(activeFilters.dateFrom + 'T00:00:00'))));
-  }
-  if (activeFilters.dateTo) {
-    constraints.push(where('date', '<=', Timestamp.fromDate(new Date(activeFilters.dateTo + 'T23:59:59'))));
-  }
-
-  const snap = await getDocs(query(collection(db, 'transactions'), ...constraints));
-  let txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  if (activeFilters.card) txns = txns.filter(t => t.card === activeFilters.card);
-  if (activeFilters.category) txns = txns.filter(t => t.category === activeFilters.category);
-  if (activeFilters.tag) txns = txns.filter(t => t.transactionTag === activeFilters.tag);
-  if (activeFilters.description) txns = txns.filter(t => (t.description || '').toLowerCase().includes(activeFilters.description));
-
-  const vtChildMap = await buildVtEnrichment(txns);
-  renderTransactions(txns, true, vtChildMap);
-}
-
-export function toggleFilterPanel() {
-  const panel = document.getElementById('filter-panel');
-  const btn = document.getElementById('filter-btn');
-  const isHidden = panel.classList.toggle('hidden');
-  if (isHidden && !hasActiveFilters()) btn.classList.remove('filter-active');
-}
-
-export function applyFilters() {
-  activeFilters = {
-    dateFrom: document.getElementById('filter-date-from').value,
-    dateTo: document.getElementById('filter-date-to').value,
-    card: document.getElementById('filter-card').value,
-    category: document.getElementById('filter-category').value,
-    tag: document.getElementById('filter-tag').value,
-    description: document.getElementById('filter-description').value.toLowerCase().trim(),
-  };
-  const hasFilter = hasActiveFilters();
-  document.getElementById('filter-btn').classList.toggle('filter-active', hasFilter);
-  if (hasFilter) {
-    loadFilteredTransactions();
+  if (id && !hasActiveFilters()) {
+    await patchRowInPlace({ id, ...data });
   } else {
     loadTransactions(true);
   }
 }
 
-export function clearFilters() {
-  activeFilters = { dateFrom: '', dateTo: '', card: '', category: '', tag: '', description: '' };
-  document.getElementById('filter-date-from').value = '';
-  document.getElementById('filter-date-to').value = '';
-  document.getElementById('filter-card').value = '';
-  document.getElementById('filter-category').value = '';
-  document.getElementById('filter-tag').value = '';
-  document.getElementById('filter-description').value = '';
-  document.getElementById('filter-btn').classList.remove('filter-active');
-  loadTransactions(true);
+export async function deleteTransaction(id) {
+  if (!confirm('Delete this transaction?')) return;
+  if (!await guardWrite(() => deleteDoc(doc(db, 'transactions', id)), 'Delete transaction')) return;
+  showToast('Transaction deleted.', 'success');
+  removeRowFromDom(id);
 }
 
-async function initFilterPanel() {
-  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
-  const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
-  const select = document.getElementById('filter-card');
-  Object.keys(cardsData).forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
-    select.appendChild(opt);
-  });
+async function loadFilteredTransactions() {
+  const list = document.getElementById('transactions-list');
+  list.innerHTML = '<tr><td colspan="8" class="loading">Loading…</td></tr>';
+  document.getElementById('load-more-btn').style.display = 'none';
+
+  try {
+    const f = colFilters;
+    const constraints = [orderBy('date', 'desc')];
+    if (f.date.from) constraints.push(where('date', '>=', Timestamp.fromDate(new Date(f.date.from + 'T00:00:00'))));
+    if (f.date.to)   constraints.push(where('date', '<=', Timestamp.fromDate(new Date(f.date.to + 'T23:59:59'))));
+
+    const snap = await getDocs(query(collection(db, 'transactions'), ...constraints));
+    let txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (f.card.length)     txns = txns.filter(t => f.card.includes(t.card));
+    if (f.category.length) txns = txns.filter(t => f.category.includes(t.category));
+    if (f.tag.length)      txns = txns.filter(t => f.tag.includes(t.transactionTag || ''));
+    if (f.description) {
+      const q = f.description.toLowerCase();
+      txns = txns.filter(t => (t.description || '').toLowerCase().includes(q));
+    }
+    if (f.amount.min !== '') { const m = parseFloat(f.amount.min); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) >= m); }
+    if (f.amount.max !== '') { const m = parseFloat(f.amount.max); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) <= m); }
+
+    const vtChildMap = await buildVtEnrichment(txns);
+    renderTransactions(txns, true, vtChildMap);
+  } catch (e) {
+    console.error('Filtered transactions load failed:', e);
+    list.innerHTML = `<tr><td colspan="8" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+  }
 }
 
 export function closeTransactionModal() {
   document.getElementById('transaction-modal').classList.add('hidden');
+}
+
+// ── Excel export ──────────────────────────────────────────────────
+// SheetJS (xlsx) is vendored at js/vendor/xlsx.full.min.js but lazy-loaded
+// on first click — it's ~880KB and most sessions never export.
+function loadXlsxLibrary() {
+  return new Promise((resolve, reject) => {
+    if (typeof XLSX !== 'undefined') return resolve();
+    const s = document.createElement('script');
+    s.src = 'js/vendor/xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load xlsx library'));
+    document.head.appendChild(s);
+  });
+}
+
+export async function exportTransactionsXlsx() {
+  const btn = document.getElementById('export-xlsx-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await loadXlsxLibrary();
+    const snap = await getDocs(query(collection(db, 'transactions'), orderBy('date', 'desc')));
+    const rows = snap.docs.map(d => {
+      const t = d.data();
+      return {
+        Date: t.date?.toDate ? t.date.toDate() : t.date,
+        Card: t.card || '',
+        Description: t.description || '',
+        Category: t.category || '',
+        Type: t.type || '',
+        Amount: t.amount || 0,
+        Points: t.pointsEarned || 0,
+        Tag: t.transactionTag || '',
+        'Statement Period': t.statementPeriod || '',
+        Reimbursable: t.reimbursable ? 'Yes' : '',
+        Source: t.source || '',
+        Notes: t.notes || '',
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows, { cellDates: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `cards-tracker-${today}.xlsx`);
+    showToast(`Exported ${rows.length} transactions.`, 'success');
+  } catch (e) {
+    console.error('Export failed:', e);
+    showToast(`Export failed: ${e.message || e}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 export function getTransactionFormHTML() {

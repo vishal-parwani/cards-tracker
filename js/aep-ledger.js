@@ -3,20 +3,28 @@ import {
   orderBy, Timestamp, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency } from './utils.js';
+import { formatCurrency, guardWrite } from './utils.js';
+import { isAepEligible, computeAepBands, resolveDashboardWidget } from './points-config.js';
 
 const TOLERANCE_PTS = 500;
-const AEP_EXCLUDED = new Set([
-  'Fees & Charges', 'Fuel', 'Government Services', 'Insurance',
-  'Utilities & Telecom', 'Shopping - Jewellery', 'Wallet Load',
-]);
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function monthLabel(year, month1) { return `${MONTH_NAMES[month1 - 1]} ${year}`; }
 function monthSortKey(year, month1) { return `${year}-${String(month1).padStart(2, '0')}`; }
 
-async function computeAepForMonth(monthSort) {
+// The AEP ledger follows whichever card is assigned the 'mbAep' dashboard
+// widget, so renaming the Magnus card doesn't break it.
+async function resolveMbAepCardName() {
+  const snap = await getDoc(doc(db, 'config', 'cards'));
+  const cards = snap.exists() ? snap.data() : {};
+  for (const [name, val] of Object.entries(cards)) {
+    if (resolveDashboardWidget(name, val) === 'mbAep') return name;
+  }
+  return null;
+}
+
+async function computeAepForMonth(monthSort, cardName) {
   const [year, month1] = monthSort.split('-').map(Number);
   const monthStart = new Date(year, month1 - 1, 1);
   const monthEnd   = new Date(year, month1, 1);
@@ -24,7 +32,7 @@ async function computeAepForMonth(monthSort) {
   const [txnSnap, mbAepSnap] = await Promise.all([
     getDocs(query(
       collection(db, 'transactions'),
-      where('card', '==', 'Magnus Burgundy'),
+      where('card', '==', cardName),
       where('date', '>=', Timestamp.fromDate(monthStart)),
       where('date', '<', Timestamp.fromDate(monthEnd)),
     )),
@@ -32,11 +40,6 @@ async function computeAepForMonth(monthSort) {
   ]);
 
   const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
-  const band1Max  = mbAep.band1Max  || 150000;
-  const band2Max  = mbAep.band2Max  || 1450000;
-  const band1Rate = mbAep.band1Rate || 12;
-  const band2Rate = mbAep.band2Rate || 35;
-  const band3Rate = mbAep.band3Rate || 12;
 
   let totalDebit = 0, eligibleSpend = 0, txnCount = 0, ineligibleCount = 0;
   txnSnap.forEach(d => {
@@ -44,43 +47,30 @@ async function computeAepForMonth(monthSort) {
     if (t.type !== 'debit') return;
     txnCount++;
     totalDebit += t.amount || 0;
-    const eligible = !AEP_EXCLUDED.has(t.category) && t.category !== 'Rent'
-                  && t.transactionTag !== 'AEP Ineligible';
-    if (eligible) eligibleSpend += t.amount || 0;
+    if (isAepEligible(t)) eligibleSpend += t.amount || 0;
     else ineligibleCount++;
   });
 
-  let band1Pts = 0, band2Pts = 0, band3Pts = 0, band = 'Band 1';
-  if (eligibleSpend <= band1Max) {
-    band1Pts = Math.floor(eligibleSpend / 200) * band1Rate;
-    band = 'Band 1';
-  } else if (eligibleSpend <= band2Max) {
-    band1Pts = Math.floor(band1Max / 200) * band1Rate;
-    band2Pts = Math.floor((eligibleSpend - band1Max) / 200) * band2Rate;
-    band = 'Band 2';
-  } else {
-    band1Pts = Math.floor(band1Max / 200) * band1Rate;
-    band2Pts = Math.floor((band2Max - band1Max) / 200) * band2Rate;
-    band3Pts = Math.floor((eligibleSpend - band2Max) / 200) * band3Rate;
-    band = 'Band 3';
-  }
-  const calculatedPoints = band1Pts + band2Pts + band3Pts;
+  const b = computeAepBands(eligibleSpend, mbAep);
 
   return {
     eligibleSpend, totalDebit, txnCount, ineligibleCount,
-    band, calculatedPoints,
-    breakdown: { band1Pts, band2Pts, band3Pts, band1Max, band2Max,
-                 band1Rate, band2Rate, band3Rate },
+    band: b.band, calculatedPoints: b.calculatedPoints,
+    breakdown: {
+      band1Pts: b.band1Pts, band2Pts: b.band2Pts, band3Pts: b.band3Pts,
+      band1Max: b.band1Max, band2Max: b.band2Max,
+      band1Rate: b.band1Rate, band2Rate: b.band2Rate, band3Rate: b.band3Rate,
+    },
   };
 }
 
 // Returns {year, month1} pairs for past months that:
 //   • have Magnus debit spend AND
 //   • the 3rd of the following month has arrived
-async function findMissingLedgerMonths(existingMonthSorts) {
+async function findMissingLedgerMonths(existingMonthSorts, cardName) {
   const snap = await getDocs(query(
     collection(db, 'transactions'),
-    where('card', '==', 'Magnus Burgundy'),
+    where('card', '==', cardName),
   ));
   const monthsSeen = new Set();
   snap.forEach(d => {
@@ -107,6 +97,12 @@ export async function loadAepLedger() {
   container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
+    const cardName = await resolveMbAepCardName();
+    if (!cardName) {
+      container.innerHTML = '<p class="empty">No card is assigned the Magnus AEP widget. In Settings, set a card\'s "Dashboard Spend Tracker" to Magnus AEP.</p>';
+      return;
+    }
+
     const rowsSnap = await getDocs(query(
       collection(db, 'aepLedger'), orderBy('monthSort', 'desc'),
     ));
@@ -119,7 +115,7 @@ export async function loadAepLedger() {
     });
 
     // Auto-create any missing past-month rows once their cutoff has passed.
-    const missing = await findMissingLedgerMonths(existingMonthSorts);
+    const missing = await findMissingLedgerMonths(existingMonthSorts, cardName);
     for (const m of missing) {
       const docId = monthLabel(m.year, m.month1);
       const newRow = {
@@ -143,7 +139,7 @@ export async function loadAepLedger() {
 
     const enriched = await Promise.all(rows.map(async r => ({
       ...r,
-      calc: await computeAepForMonth(r.monthSort),
+      calc: await computeAepForMonth(r.monthSort, cardName),
     })));
 
     container.innerHTML = renderTable(enriched);
@@ -234,12 +230,13 @@ export async function saveAepReceived() {
   const points = parseInt(ptsStr, 10);
   if (isNaN(points) || points < 0) { alert('Invalid points value.'); return; }
 
-  await updateDoc(doc(db, 'aepLedger', id), {
+  const ok = await guardWrite(() => updateDoc(doc(db, 'aepLedger', id), {
     status: 'received',
     receivedPoints: points,
     receivedDate: Timestamp.fromDate(new Date(dateStr)),
     notes,
-  });
+  }), 'Save AEP received');
+  if (!ok) return;
   document.getElementById('aep-received-modal').classList.add('hidden');
   loadAepLedger();
 }
@@ -248,12 +245,13 @@ export async function clearAepReceived() {
   const { id } = markReceivedState;
   if (!id) return;
   if (!confirm('Reset this AEP row back to Pending?')) return;
-  await updateDoc(doc(db, 'aepLedger', id), {
+  const ok = await guardWrite(() => updateDoc(doc(db, 'aepLedger', id), {
     status: 'pending',
     receivedPoints: null,
     receivedDate: null,
     notes: '',
-  });
+  }), 'Reset AEP row');
+  if (!ok) return;
   document.getElementById('aep-received-modal').classList.add('hidden');
   loadAepLedger();
 }
@@ -263,7 +261,8 @@ export async function openAepDetailModal(id) {
   const snap = await getDoc(doc(db, 'aepLedger', id));
   if (!snap.exists()) return;
   const r = snap.data();
-  const calc = await computeAepForMonth(r.monthSort);
+  const cardName = await resolveMbAepCardName();
+  const calc = await computeAepForMonth(r.monthSort, cardName);
   const b = calc.breakdown;
 
   const lines = [];

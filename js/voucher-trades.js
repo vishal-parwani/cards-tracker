@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency, formatDate, formatDateInput, aggregateChildStatus, sumChildHaircut, computeChildHaircutPnl } from './utils.js';
+import { formatCurrency, formatDate, formatDateInput, aggregateChildStatus, sumChildHaircut, computeChildHaircutPnl, guardWrite, showToast } from './utils.js';
 
 let creditTxnsCache = null; // populated on first child-edit modal open per session
 
@@ -184,8 +184,8 @@ export async function saveMarkTraded() {
   const tradeDateStr = document.getElementById('mark-traded-trade-date').value;
   const cashReceived = parseFloat(document.getElementById('mark-traded-cash').value);
 
-  if (!tradeDateStr || isNaN(cashReceived)) {
-    alert('Please fill in trade date and cash received.');
+  if (!tradeDateStr || isNaN(cashReceived) || cashReceived < 0) {
+    alert('Enter a valid trade date and a non-negative cash amount.');
     return;
   }
 
@@ -194,13 +194,14 @@ export async function saveMarkTraded() {
   const purchaseAmount = trade.purchaseAmount || 0;
   const haircut = purchaseAmount > 0 ? ((purchaseAmount - cashReceived) / purchaseAmount * 100) : 0;
 
-  await updateDoc(doc(db, 'voucherTrades', id), {
+  const ok = await guardWrite(() => updateDoc(doc(db, 'voucherTrades', id), {
     status: 'Traded',
     tradeDate: Timestamp.fromDate(new Date(tradeDateStr)),
     cashReceived,
     haircut: parseFloat(haircut.toFixed(2)),
     netPnl: cashReceived - purchaseAmount
-  });
+  }), 'Mark as traded');
+  if (!ok) return;
 
   closeMarkTradedModal();
   loadVoucherTrades();
@@ -239,10 +240,8 @@ export async function saveTrade() {
   const dateStr = document.getElementById('trade-date').value;
   const amount = parseFloat(document.getElementById('trade-amount').value);
 
-  if (!dateStr || isNaN(amount)) {
-    alert('Please fill in date and amount.');
-    return;
-  }
+  if (!dateStr) { alert('Pick a purchase date.'); return; }
+  if (isNaN(amount) || amount <= 0) { alert('Enter a purchase amount greater than zero.'); return; }
 
   const data = {
     purchaseDate: Timestamp.fromDate(new Date(dateStr)),
@@ -253,11 +252,13 @@ export async function saveTrade() {
     status: 'Pending'
   };
 
-  if (id) {
-    await updateDoc(doc(db, 'voucherTrades', id), data);
-  } else {
-    await addDoc(collection(db, 'voucherTrades'), data);
-  }
+  const ok = await guardWrite(
+    () => id
+      ? updateDoc(doc(db, 'voucherTrades', id), data)
+      : addDoc(collection(db, 'voucherTrades'), data),
+    id ? 'Update voucher trade' : 'Add voucher trade'
+  );
+  if (!ok) return;
 
   closeAddTradeModal();
   loadVoucherTrades();
@@ -300,7 +301,7 @@ export async function deleteVtParent(id) {
     }
   }
   txnSnap.docs.forEach(t => batch.update(t.ref, { voucherTradeParentId: null }));
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Delete voucher trade')) return;
   loadVoucherTrades();
 }
 
@@ -369,6 +370,7 @@ export async function saveEditSplits() {
   })).filter(e => !isNaN(e.amount));
 
   if (entries.length === 0) { alert('At least one split required.'); return; }
+  if (entries.some(e => e.amount <= 0)) { alert('Each split amount must be greater than zero.'); return; }
 
   const total = entries.reduce((s, e) => s + e.amount, 0);
   if (total > (parent.purchaseAmount || 0) + 0.01) {
@@ -406,7 +408,7 @@ export async function saveEditSplits() {
     }
   }
   for (const c of removed) batch.delete(doc(db, 'voucherTrades', c.id));
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Save splits')) return;
 
   document.getElementById('edit-splits-modal').classList.add('hidden');
   loadVoucherTrades();
@@ -448,7 +450,7 @@ export async function saveSettleVt() {
   const tradeDateStr = document.getElementById('settle-vt-trade-date').value;
   const cash = parseFloat(document.getElementById('settle-vt-cash').value);
   const linkedCreditId = document.getElementById('settle-vt-credit-link').value || null;
-  if (!tradeDateStr || isNaN(cash)) { alert('Trade date and cash received are required.'); return; }
+  if (!tradeDateStr || isNaN(cash) || cash < 0) { alert('Enter a valid trade date and a non-negative cash amount.'); return; }
 
   const childSnap = await getDoc(doc(db, 'voucherTrades', id));
   if (!childSnap.exists()) return;
@@ -466,7 +468,7 @@ export async function saveSettleVt() {
     settlementTransactionId: linkedCreditId,
   });
   await syncCreditLinkArrays(batch, id, prevSettlementId, linkedCreditId);
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Settle voucher trade')) return;
 
   document.getElementById('settle-vt-modal').classList.add('hidden');
   loadVoucherTrades();
@@ -488,7 +490,7 @@ export async function unsettleVt() {
     settlementTransactionId: null,
   });
   await syncCreditLinkArrays(batch, id, prevSettlementId, null);
-  await batch.commit();
+  if (!await guardWrite(() => batch.commit(), 'Unsettle voucher trade')) return;
 
   document.getElementById('settle-vt-modal').classList.add('hidden');
   loadVoucherTrades();

@@ -2,11 +2,12 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/f
 import { auth } from './config.js';
 import { signInWithApple, signOut } from './auth.js';
 import { loadDashboard } from './dashboard.js';
-import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, toggleFilterPanel, applyFilters, clearFilters, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit } from './transactions.js';
+import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit, exportTransactionsXlsx } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
 import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepReceived, clearAepReceived } from './aep-ledger.js';
 import { loadRewards, setRewardsPreset, setRewardsCustom, openEditRewardModal, saveReward, deleteReward, closeRewardModal, addRedemptionRow } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, openEditAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard } from './settings.js';
+import { initDatePickers } from './utils.js';
 
 // Expose handlers to HTML onclick attributes
 window.editTransaction = openEditTransaction;
@@ -77,12 +78,8 @@ function switchTab(tab) {
 
 // Transactions
 document.getElementById('add-txn-btn').addEventListener('click', openAddTransaction);
-document.getElementById('filter-btn').addEventListener('click', toggleFilterPanel);
-document.getElementById('clear-filter-btn').addEventListener('click', clearFilters);
-['filter-date-from', 'filter-date-to', 'filter-card', 'filter-category', 'filter-tag', 'filter-description'].forEach(id => {
-  document.getElementById(id).addEventListener('change', applyFilters);
-});
 document.getElementById('load-more-btn').addEventListener('click', () => loadTransactions(false));
+document.getElementById('export-xlsx-btn').addEventListener('click', exportTransactionsXlsx);
 document.getElementById('save-txn-btn').addEventListener('click', saveTransaction);
 document.getElementById('cancel-txn-btn').addEventListener('click', closeTransactionModal);
 
@@ -139,6 +136,10 @@ document.addEventListener('keydown', e => {
     document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(el => el.classList.add('hidden'));
   }
 });
+
+// Themed date pickers for every static date input (modals included — their
+// inputs exist in the DOM from page load even while the modal is hidden).
+initDatePickers();
 
 // PWA: register the app-shell service worker.
 // app.js only runs after its CDN module imports resolve, so the window

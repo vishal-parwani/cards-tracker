@@ -285,6 +285,7 @@ body {
 
 /* Transactions table column widths */
 .txn-table td { white-space: nowrap; }
+.txn-table th { white-space: nowrap; }
 .txn-table th:nth-child(1), .txn-table td:nth-child(1) { width: 110px; }
 .txn-table th:nth-child(2), .txn-table td:nth-child(2) { width: 140px; }
 .txn-table th:nth-child(5), .txn-table td:nth-child(5) { width: 115px; }

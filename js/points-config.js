@@ -33,6 +33,8 @@ export const AEP_EXCLUDED_CATS = new Set([
 export const SMARTBUY_CAP = 15000;
 export const ISHOP_CAP = 18000;
 export const ISHOP_DAILY_ACCEL_CAP = 10000;
+export const TIMES_BLACK_ISHOP_CAP = 15000;
+export const TIMES_BLACK_DAILY_ACCEL_CAP = 8000;
 
 // AEP band defaults — overridden per-field by config/mbAep when present.
 export const AEP_BAND_DEFAULTS = {
@@ -44,10 +46,11 @@ export const AEP_BAND_DEFAULTS = {
 // `dashboardWidget` config field, so the widget (and the AEP ledger) follow
 // the card through a rename instead of being hard-bound to its name.
 export const DASHBOARD_WIDGETS = [
-  { id: '',         label: 'None' },
-  { id: 'mbAep',    label: 'Magnus AEP' },
-  { id: 'infiniaSb', label: 'Infinia SmartBuy' },
-  { id: 'epmIshop', label: 'EPM iShop' },
+  { id: '',               label: 'None' },
+  { id: 'mbAep',          label: 'Magnus AEP' },
+  { id: 'infiniaSb',      label: 'Infinia SmartBuy' },
+  { id: 'epmIshop',       label: 'EPM iShop' },
+  { id: 'timesBlackIshop', label: 'Times Black iShop' },
 ];
 
 // Cards historically hard-linked to a widget. Used only as the default for
@@ -57,6 +60,7 @@ export const DEFAULT_WIDGET_BY_NAME = {
   'Magnus Burgundy': 'mbAep',
   'Infinia':         'infiniaSb',
   'ICICI EPM':       'epmIshop',
+  'Times Black':     'timesBlackIshop',
 };
 
 // Resolve a card's dashboard widget from its raw config value, falling back
@@ -108,6 +112,9 @@ export function smartBuyAccelPts(amount) {
 }
 export function epmIshopAccelPts(amount) {
   return Math.floor((amount || 0) / 200) * 30;  // 5× accel of 6pts/₹200
+}
+export function timesBlackIshopAccelPts(amount) {
+  return Math.floor((amount || 0) / 100) * 10;  // 5× accel of 2pts/₹100
 }
 
 // Magnus AEP eligibility for a single transaction.

@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
-import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP } from './points-config.js';
+import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
 export async function loadDashboard() {
@@ -43,6 +43,7 @@ export async function loadDashboard() {
           ${renderMagnusAep(cardResults, mbAep)}
           ${renderInfiniaSmartBuy(cardResults)}
           ${renderEpmIshop(cardResults)}
+          ${renderTimesBlackIshop(cardResults)}
           ${renderVtSummary(vtSummary)}
         </div>
       </section>
@@ -113,6 +114,7 @@ async function loadCardData(card, monthStart) {
   let magnusAepEligible = 0;
   let magnusSmartBuyPts = 0;
   let epmIshopPts = 0;
+  let timesBlackIshopPts = 0;
 
   if (card.dashboardWidget === 'mbAep') {
     mtdTxns.forEach(t => {
@@ -155,6 +157,25 @@ async function loadCardData(card, monthStart) {
     epmDailyOverages.push(...overagesAll.slice(0, 2));
   }
 
+  const timesBlackDailyOverages = [];
+  if (card.dashboardWidget === 'timesBlackIshop') {
+    const dailyAccel = new Map();
+    mtdTxns.forEach(t => {
+      if (t.type !== 'debit' || t.transactionTag !== 'iShop' || !t.date) return;
+      const accel = timesBlackIshopAccelPts(t.amount);
+      const d = t.date.toDate ? t.date.toDate() : new Date(t.date);
+      const key = d.toISOString().slice(0, 10);
+      dailyAccel.set(key, (dailyAccel.get(key) || 0) + accel);
+    });
+    const sortedDays = [...dailyAccel.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const overagesAll = [];
+    for (const [day, raw] of sortedDays) {
+      timesBlackIshopPts += Math.min(raw, TIMES_BLACK_DAILY_ACCEL_CAP);
+      if (raw > TIMES_BLACK_DAILY_ACCEL_CAP) overagesAll.push({ day, raw });
+    }
+    timesBlackDailyOverages.push(...overagesAll.slice(0, 2));
+  }
+
   return {
     ...card,
     stmtBalance,
@@ -164,8 +185,47 @@ async function loadCardData(card, monthStart) {
     magnusSmartBuyPts,
     epmIshopPts,
     epmDailyOverages,
+    timesBlackIshopPts,
+    timesBlackDailyOverages,
     billingCycle: getBillingCycleLabel(card.cutoffDay)
   };
+}
+
+function renderTimesBlackIshop(cardResults) {
+  const tb = cardResults.find(r => r.dashboardWidget === 'timesBlackIshop');
+  if (!tb) return '';
+
+  const pts = tb.timesBlackIshopPts;
+  const cap = TIMES_BLACK_ISHOP_CAP;
+  const remainingPts = Math.max(0, cap - pts);
+  // ₹100 iShop spend earns 10 accel pts → remaining spend = (remainingPts / 10) * 100
+  const remainingSpend = Math.ceil((remainingPts / 10) * 100);
+  const pct = Math.min(100, (pts / cap) * 100).toFixed(0);
+
+  const overages = tb.timesBlackDailyOverages || [];
+  const dailyWarning = overages.length
+    ? `<div class="tracker-warning">⚠ Daily 8k accel cap hit (capped to 8,000): ${overages
+        .map(o => `${o.day} (raw ${o.raw.toLocaleString('en-IN')} pts)`)
+        .join(', ')}</div>`
+    : '';
+
+  return `
+    <div class="tracker-card">
+      <div class="tracker-header">
+        <span class="tracker-title">Times Black iShop</span>
+        <span class="tracker-badge ${pts >= cap ? 'badge-red' : 'badge-green'}">${pts >= cap ? 'Cap reached' : 'Active'}</span>
+      </div>
+      <div class="tracker-metric">${pts.toLocaleString('en-IN')} <span class="tracker-sub">/ 15,000 pts</span></div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar bar-indigo ${pts >= cap ? 'bar-red' : ''}" style="width:${pct}%"></div>
+      </div>
+      <div class="tracker-row">
+        <span>${pts >= cap ? '✓ Cap reached' : formatCurrency(remainingSpend) + ' to max cap'}</span>
+        <span>${pct}% used</span>
+      </div>
+      ${dailyWarning}
+    </div>
+  `;
 }
 
 async function loadVtSummary(monthStart) {

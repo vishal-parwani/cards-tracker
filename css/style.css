@@ -13,6 +13,7 @@
   --terra:     #c4845a;   /* terracotta — primary, Magnus AEP */
   --sage:      #6b8f71;   /* sage green — Infinia SmartBuy */
   --amber:     #c49a3c;   /* amber/gold — EPM iShop */
+  --indigo:    #7a6b8f;   /* muted indigo — Times Black iShop */
 
   /* Badges */
   --badge-green-bg:  #d4edd4; --badge-green-txt:  #2a6a2a;
@@ -211,7 +212,8 @@ body {
 .progress-bar-wrap { background: var(--bar-bg); border-radius: 999px; height: 7px; overflow: hidden; margin-bottom: 4px; }
 .progress-bar           { height: 100%; border-radius: 999px; background: var(--terra); transition: width 0.4s ease; }
 .progress-bar.bar-sage  { background: var(--sage); }
-.progress-bar.bar-amber { background: var(--amber); }
+.progress-bar.bar-amber  { background: var(--amber); }
+.progress-bar.bar-indigo { background: var(--indigo); }
 .progress-bar.bar-red   { background: #c97b5a; }
 
 /* ── Badges ── */

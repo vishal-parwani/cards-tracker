@@ -14,16 +14,18 @@ export const CARD_POINTS_RATES = {
   'Times Black':     { rate: 2,  per: 100 },
 };
 
-// Categories that earn ZERO base points, per card.
+// Categories that earn ZERO base points, per card. Magnus Burgundy is
+// intentionally absent — for that card, base earning follows the backend's
+// AEP exclusion set (see AEP_EXCLUDED_CATS + computePointsForTag below).
 export const CARD_EXCLUDED_CATS = {
-  'Magnus Burgundy': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load', 'EMI']),
-  'Infinia':         new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load']),
-  'ICICI EPM':       new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
-  'Times Black':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
+  'Infinia':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load']),
+  'ICICI EPM':   new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
+  'Times Black': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
 };
 
-// Categories excluded from Magnus AEP *eligible spend*. Distinct from the
-// base-points exclusion above — AEP eligibility is its own ruleset.
+// Magnus AEP-excluded categories. Backend uses this set for BOTH AEP
+// eligibility AND base-point exclusion on Magnus Burgundy
+// (firestore_utils.py::compute_points), so the UI must mirror that.
 export const AEP_EXCLUDED_CATS = new Set([
   'Fees & Charges', 'Fuel', 'Government Services', 'Insurance',
   'Utilities & Telecom', 'Shopping - Jewellery', 'Wallet Load',
@@ -90,6 +92,15 @@ export function deriveTag(card, description) {
 // at write time; the UI shows the un-capped value as a guide).
 export function computePointsForTag(card, amount, category, type, tag) {
   if (type === 'credit') return 0;
+  if (card === 'Magnus Burgundy') {
+    // Backend zeros base points whenever the category is AEP-excluded.
+    // Otherwise it prorates across the 3 AEP bands (Band 2 = 35/200). The UI
+    // can't replicate band proration without per-txn cumulative state, so this
+    // returns the base 12/200 rate — used only as a "guide" for NEW txns. The
+    // edit flow preserves the backend-stored value (see transactions.js).
+    if (AEP_EXCLUDED_CATS.has(category)) return 0;
+    return Math.floor(amount / 200) * 12;
+  }
   const excl = CARD_EXCLUDED_CATS[card];
   if (excl && excl.has(category)) return 0;
   if (card === 'Infinia' && tag === 'SmartBuy') {

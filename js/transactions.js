@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
-import { deriveTag, computePointsForTag } from './points-config.js';
+import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
 
 const PAGE_SIZE = 50;
 let lastVisible = null;
@@ -40,6 +40,28 @@ function autoComputePoints() {
   const category = document.getElementById('txn-category').value;
   const type     = document.getElementById('txn-type').value;
   const tag      = document.getElementById('txn-tag').value;
+
+  // Magnus Burgundy edit-preserve: the backend prorates points across AEP
+  // bands (Band 2 = 35/200, vs base 12/200); the UI can't replicate that
+  // without cumulative state, so a naive recompute on edit would clobber
+  // a high-band value with the base rate. Preserve the stored value unless
+  // the new category zeros it or the amount changed.
+  if (card === 'Magnus Burgundy' && editingOriginal && editingOriginal.card === 'Magnus Burgundy') {
+    if (type === 'credit') { document.getElementById('txn-points').value = 0; return; }
+    if (AEP_EXCLUDED_CATS.has(category)) { document.getElementById('txn-points').value = 0; return; }
+    const origAmt = editingOriginal.amount || 0;
+    const origPts = editingOriginal.pointsEarned || 0;
+    if (amount === origAmt) {
+      document.getElementById('txn-points').value = origPts;
+      return;
+    }
+    if (origAmt > 0 && origPts > 0) {
+      // Scale by the original effective rate so a Band-2 txn stays Band-2.
+      document.getElementById('txn-points').value = Math.round((origPts / origAmt) * amount);
+      return;
+    }
+  }
+
   document.getElementById('txn-points').value =
     computePointsForTag(card, amount, category, type, tag);
 }
@@ -421,7 +443,15 @@ function showTransactionModal(txn, cardsData) {
 
   document.getElementById('modal-title').textContent = isEdit ? 'Edit Transaction' : 'Add Transaction';
   document.getElementById('txn-id').value = txn?.id || '';
-  editingOriginal = isEdit ? { date: txn?.date || null, source: txn?.source || null } : null;
+  editingOriginal = isEdit ? {
+    date: txn?.date || null,
+    source: txn?.source || null,
+    card: txn?.card || null,
+    amount: txn?.amount || 0,
+    type: txn?.type || null,
+    category: txn?.category || null,
+    pointsEarned: txn?.pointsEarned || 0,
+  } : null;
   document.getElementById('txn-date').value = date;
   document.getElementById('txn-card').innerHTML = cards.map(c => `<option value="${c}" ${txn?.card === c ? 'selected' : ''}>${c}</option>`).join('');
   document.getElementById('txn-description').value = txn?.description || '';

@@ -1,6 +1,6 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { formatCurrency, getStatementStartDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
+import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
 import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
@@ -79,14 +79,20 @@ export async function loadDashboard() {
 
 async function loadCardData(card, monthStart) {
   const stmtStart = getStatementStartDate(card.cutoffDay);
+  // Upper bound the statement query so next-cycle / future-dated txns don't
+  // leak in. End is the last day of the current billing cycle, inclusive.
+  const stmtEnd = new Date(getStatementEndDate(card.cutoffDay));
+  stmtEnd.setHours(23, 59, 59, 999);
   const stmtStartTs = Timestamp.fromDate(stmtStart);
+  const stmtEndTs   = Timestamp.fromDate(stmtEnd);
   const monthStartTs = Timestamp.fromDate(monthStart);
 
   const [stmtSnap, mtdSnap] = await Promise.all([
     getDocs(query(
       collection(db, 'transactions'),
       where('card', '==', card.name),
-      where('date', '>=', stmtStartTs)
+      where('date', '>=', stmtStartTs),
+      where('date', '<=', stmtEndTs)
     )),
     getDocs(query(
       collection(db, 'transactions'),
@@ -95,10 +101,21 @@ async function loadCardData(card, monthStart) {
     ))
   ]);
 
+  // stmtBalance = net outstanding (debits minus credits/payments). stmtSpend
+  // = debits only, the "how much did I spend this cycle" number. Showing both
+  // makes the difference (credits + payments received) obvious instead of
+  // looking like a mystery gap vs. MTD.
   let stmtBalance = 0;
+  let stmtSpend = 0;
   stmtSnap.forEach(d => {
     const t = d.data();
-    stmtBalance += t.type === 'debit' ? (t.amount || 0) : -(t.amount || 0);
+    const amt = t.amount || 0;
+    if (t.type === 'debit') {
+      stmtBalance += amt;
+      stmtSpend   += amt;
+    } else {
+      stmtBalance -= amt;
+    }
   });
 
   let mtdSpend = 0;
@@ -179,6 +196,7 @@ async function loadCardData(card, monthStart) {
   return {
     ...card,
     stmtBalance,
+    stmtSpend,
     mtdSpend,
     stmtStart,
     magnusAepEligible,
@@ -282,8 +300,9 @@ function renderVtSummary(s) {
 }
 
 function renderTotalCard(cardResults) {
-  const totalStmt = cardResults.reduce((sum, r) => sum + r.stmtBalance, 0);
-  const totalMtd = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
+  const totalStmt  = cardResults.reduce((sum, r) => sum + r.stmtBalance, 0);
+  const totalSpend = cardResults.reduce((sum, r) => sum + r.stmtSpend, 0);
+  const totalMtd   = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
   return `
     <div class="balance-card total-card">
       <div class="balance-card-header">
@@ -293,6 +312,10 @@ function renderTotalCard(cardResults) {
       <div class="balance-row">
         <span class="balance-label">Next Statement</span>
         <span class="balance-amount accent">${formatCurrency(totalStmt)}</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">Cycle Spend</span>
+        <span class="balance-amount">${formatCurrency(totalSpend)}</span>
       </div>
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>
@@ -315,6 +338,10 @@ function renderCardBalanceCard(r) {
       <div class="balance-row">
         <span class="balance-label">Next Statement</span>
         <span class="balance-amount accent">${formatCurrency(r.stmtBalance)}</span>
+      </div>
+      <div class="balance-row">
+        <span class="balance-label">Cycle Spend</span>
+        <span class="balance-amount">${formatCurrency(r.stmtSpend)}</span>
       </div>
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>

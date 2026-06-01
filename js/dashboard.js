@@ -87,7 +87,7 @@ async function loadCardData(card, monthStart) {
   const stmtEndTs   = Timestamp.fromDate(stmtEnd);
   const monthStartTs = Timestamp.fromDate(monthStart);
 
-  const [stmtSnap, mtdSnap] = await Promise.all([
+  const [stmtSnap, mtdSnap, allTimeSnap] = await Promise.all([
     getDocs(query(
       collection(db, 'transactions'),
       where('card', '==', card.name),
@@ -98,24 +98,28 @@ async function loadCardData(card, monthStart) {
       collection(db, 'transactions'),
       where('card', '==', card.name),
       where('date', '>=', monthStartTs)
+    )),
+    getDocs(query(
+      collection(db, 'transactions'),
+      where('card', '==', card.name)
     ))
   ]);
 
-  // stmtBalance = net outstanding (debits minus credits/payments). stmtSpend
-  // = debits only, the "how much did I spend this cycle" number. Showing both
-  // makes the difference (credits + payments received) obvious instead of
-  // looking like a mystery gap vs. MTD.
+  // stmtBalance = all-time net outstanding (total debits minus total credits/payments
+  // ever recorded). This is the true card balance — it accounts for carry-forward from
+  // previous cycles that were only partially paid. stmtSpend = debits only in the
+  // current billing cycle, the "how much did I spend this cycle" number.
   let stmtBalance = 0;
+  allTimeSnap.forEach(d => {
+    const t = d.data();
+    const amt = t.amount || 0;
+    if (t.type === 'debit') stmtBalance += amt;
+    else stmtBalance -= amt;
+  });
   let stmtSpend = 0;
   stmtSnap.forEach(d => {
     const t = d.data();
-    const amt = t.amount || 0;
-    if (t.type === 'debit') {
-      stmtBalance += amt;
-      stmtSpend   += amt;
-    } else {
-      stmtBalance -= amt;
-    }
+    if (t.type === 'debit') stmtSpend += (t.amount || 0);
   });
 
   let mtdSpend = 0;

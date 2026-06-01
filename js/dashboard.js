@@ -105,11 +105,11 @@ async function loadCardData(card, monthStart) {
     ))
   ]);
 
-  // stmtBalance = all-time net outstanding (total debits minus total credits/payments
-  // ever recorded). This is the true card balance — it accounts for carry-forward from
-  // previous cycles that were only partially paid. stmtSpend = debits only in the
+  // stmtBalance = opening balance + all-time net (total debits minus total
+  // credits/payments ever recorded). Opening balance captures any outstanding
+  // that existed before tracking started. stmtSpend = debits only in the
   // current billing cycle, the "how much did I spend this cycle" number.
-  let stmtBalance = 0;
+  let stmtBalance = card.openingBalance || 0;
   allTimeSnap.forEach(d => {
     const t = d.data();
     const amt = t.amount || 0;

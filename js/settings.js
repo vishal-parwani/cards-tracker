@@ -23,7 +23,6 @@ function normalizeCard(name, value) {
     last4:           value.last4           || '',
     pdfPassword:     value.pdfPassword     || '',
     forexRate:       value.forexRate       ?? null,
-    openingBalance:  value.openingBalance  ?? 0,
     active:          value.active          !== false,
     showOnDashboard: value.showOnDashboard !== false,
     dashboardWidget: resolveDashboardWidget(name, value),
@@ -86,7 +85,6 @@ function renderSettings(cards) {
               <div class="settings-tile-row"><span>Statement</span><strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong></div>
               <div class="settings-tile-row"><span>Bill due</span><strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong></div>
               <div class="settings-tile-row"><span>Forex</span><strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong></div>
-              ${card.openingBalance ? `<div class="settings-tile-row"><span>Opening bal</span><strong>₹${card.openingBalance.toLocaleString('en-IN')}</strong></div>` : ''}
             </div>
             <div class="settings-tile-actions">
               <button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${esc(card.name)}')">Edit</button>
@@ -150,7 +148,6 @@ export function openEditCardModal(name) {
   document.getElementById('card-cutoff-input').value = card.statementDate || '';
   document.getElementById('card-bill-input').value = card.billPaymentDate || '';
   document.getElementById('card-forex-input').value = card.forexRate != null ? (card.forexRate * 100).toFixed(1) : '';
-  document.getElementById('card-opening-balance-input').value = card.openingBalance || '';
   document.getElementById('card-active-input').checked = card.active !== false;
   document.getElementById('card-show-dashboard-input').checked = card.showOnDashboard !== false;
   populateWidgetSelect(card.dashboardWidget || '');
@@ -167,7 +164,6 @@ export async function saveCard() {
   const billPaymentDate = parseInt(document.getElementById('card-bill-input').value) || null;
   const forexRawInput   = document.getElementById('card-forex-input').value.trim();
   const forexRate       = forexRawInput !== '' ? parseFloat(forexRawInput) / 100 : null;
-  const openingBalance  = parseFloat(document.getElementById('card-opening-balance-input').value) || 0;
   const active          = document.getElementById('card-active-input').checked;
   const showOnDashboard = document.getElementById('card-show-dashboard-input').checked;
   const dashboardWidget = document.getElementById('card-dashboard-widget-input').value;
@@ -205,7 +201,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, openingBalance, active, showOnDashboard, dashboardWidget, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, dashboardWidget, dateHistory };
 
   if (isRename && !confirm(
     `Rename "${originalName}" to "${newName}"? This also updates all of its ` +

@@ -11,7 +11,7 @@ function normalizeCard(name, value) {
   if (typeof value === 'number') {
     return {
       name, statementDate: value, billPaymentDate: null, bank: '', last4: '',
-      active: true, showOnDashboard: true,
+      active: true, deleted: false, showOnDashboard: true,
       dashboardWidget: resolveDashboardWidget(name, value), dateHistory: [],
     };
   }
@@ -24,6 +24,7 @@ function normalizeCard(name, value) {
     pdfPassword:     value.pdfPassword     || '',
     forexRate:       value.forexRate       ?? null,
     active:          value.active          !== false,
+    deleted:         value.deleted         === true,
     showOnDashboard: value.showOnDashboard !== false,
     dashboardWidget: resolveDashboardWidget(name, value),
     dateHistory:     value.dateHistory     || [],
@@ -63,10 +64,41 @@ export async function loadSettings() {
   }
 }
 
+function cardTileHtml(card, esc) {
+  const statusBadge = card.deleted
+    ? '<span class="tracker-badge badge-red">Deleted</span>'
+    : (!card.active ? '<span class="tracker-badge badge-orange">Archived</span>' : '');
+  const tileClass = `settings-card-tile${card.deleted ? ' deleted' : (!card.active ? ' inactive' : '')}`;
+  const archiveLabel = card.active ? 'Archive' : 'Unarchive';
+  return `
+    <div class="${tileClass}">
+      <div class="settings-tile-header">
+        <span class="card-name">${card.name}</span>
+        ${statusBadge}
+      </div>
+      <div class="settings-tile-sub">${card.bank || ''}${card.last4 ? (card.bank ? ' ' : '') + '••' + card.last4 : ''}</div>
+      <div class="settings-tile-rows">
+        <div class="settings-tile-row"><span>Statement</span><strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong></div>
+        <div class="settings-tile-row"><span>Bill due</span><strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong></div>
+        <div class="settings-tile-row"><span>Forex</span><strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong></div>
+      </div>
+      <div class="settings-tile-actions">
+        ${!card.deleted ? `<button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${esc(card.name)}')">Edit</button>` : ''}
+        ${!card.deleted ? `<button class="btn btn-secondary btn-sm" onclick="window.toggleArchiveCard('${esc(card.name)}')">${archiveLabel}</button>` : ''}
+        ${!card.deleted
+          ? `<button class="btn btn-danger btn-sm" onclick="window.deleteCard('${esc(card.name)}')">Delete</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="window.restoreCard('${esc(card.name)}')">Restore</button>`}
+      </div>
+    </div>
+  `;
+}
+
 function renderSettings(cards) {
   const addonEntries = Object.entries(_addonCache);
   const container = document.getElementById('settings-content');
   const esc = s => String(s).replace(/'/g, "\\'");
+  const activeCards  = cards.filter(c => !c.deleted);
+  const deletedCards = cards.filter(c => c.deleted);
   container.innerHTML = `
     <section class="section">
       <div class="section-header">
@@ -74,24 +106,16 @@ function renderSettings(cards) {
         <button class="btn btn-primary" onclick="window.openAddCardModal()">+ Add Card</button>
       </div>
       <div class="cards-grid">
-        ${cards.map(card => `
-          <div class="settings-card-tile${card.active ? '' : ' inactive'}">
-            <div class="settings-tile-header">
-              <span class="card-name">${card.name}</span>
-              ${!card.active ? '<span class="tracker-badge badge-orange">Inactive</span>' : ''}
-            </div>
-            <div class="settings-tile-sub">${card.bank || ''}${card.last4 ? (card.bank ? ' ' : '') + '••' + card.last4 : ''}</div>
-            <div class="settings-tile-rows">
-              <div class="settings-tile-row"><span>Statement</span><strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong></div>
-              <div class="settings-tile-row"><span>Bill due</span><strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong></div>
-              <div class="settings-tile-row"><span>Forex</span><strong>${card.forexRate != null ? (card.forexRate * 100).toFixed(1) + '%' : '—'}</strong></div>
-            </div>
-            <div class="settings-tile-actions">
-              <button class="btn btn-secondary btn-sm" onclick="window.openEditCardModal('${esc(card.name)}')">Edit</button>
-            </div>
-          </div>
-        `).join('')}
+        ${activeCards.map(card => cardTileHtml(card, esc)).join('')}
       </div>
+      ${deletedCards.length > 0 ? `
+        <details class="deleted-cards-details">
+          <summary>Deleted cards (${deletedCards.length})</summary>
+          <div class="cards-grid" style="margin-top:10px">
+            ${deletedCards.map(card => cardTileHtml(card, esc)).join('')}
+          </div>
+        </details>
+      ` : ''}
     </section>
     <section class="section">
       <div class="section-header">
@@ -273,6 +297,46 @@ async function cascadeRename(oldName, newName, rawCardsWithNewKey) {
 
 export function closeCardModal() {
   document.getElementById('card-modal').classList.add('hidden');
+}
+
+export async function toggleArchiveCard(name) {
+  const card = _cardsCache[name];
+  if (!card) return;
+  const newActive = !card.active;
+  const label = newActive ? 'Unarchive' : 'Archive';
+  if (!confirm(`${label} "${name}"? Transactions will be preserved.`)) return;
+  const cardsRef = doc(db, 'config', 'cards');
+  const snap = await getDoc(cardsRef);
+  const raw = snap.exists() ? snap.data() : {};
+  const existing = typeof raw[name] === 'number' ? {} : (raw[name] || {});
+  raw[name] = { ...existing, active: newActive };
+  if (!await guardWrite(() => setDoc(cardsRef, raw), `${label} card`)) return;
+  showToast(`"${name}" ${newActive ? 'unarchived' : 'archived'}.`, 'success');
+  loadSettings();
+}
+
+export async function deleteCard(name) {
+  if (!confirm(`Delete "${name}" from settings?\n\nTransactions will be kept but will show a "removed card" icon.`)) return;
+  const cardsRef = doc(db, 'config', 'cards');
+  const snap = await getDoc(cardsRef);
+  const raw = snap.exists() ? snap.data() : {};
+  const existing = typeof raw[name] === 'number' ? {} : (raw[name] || {});
+  // Mark deleted — keep the key so we can restore and so status map can identify it
+  raw[name] = { ...existing, deleted: true, active: false };
+  if (!await guardWrite(() => setDoc(cardsRef, raw), 'Delete card')) return;
+  showToast(`"${name}" removed from settings. Transactions preserved.`, 'success');
+  loadSettings();
+}
+
+export async function restoreCard(name) {
+  const cardsRef = doc(db, 'config', 'cards');
+  const snap = await getDoc(cardsRef);
+  const raw = snap.exists() ? snap.data() : {};
+  const existing = typeof raw[name] === 'number' ? {} : (raw[name] || {});
+  raw[name] = { ...existing, deleted: false, active: true };
+  if (!await guardWrite(() => setDoc(cardsRef, raw), 'Restore card')) return;
+  showToast(`"${name}" restored.`, 'success');
+  loadSettings();
 }
 
 // ── Add-on card modal ─────────────────────────────────────────────

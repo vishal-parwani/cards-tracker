@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, setDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
 import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
@@ -11,6 +11,8 @@ let stmtListenersAttached = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
 let editingOriginal = null;
+// cardStatusMap: card name → 'active' | 'inactive' | 'deleted' (absent from config/cards)
+let cardStatusMap = {};
 
 // ── Per-column filters ─────────────────────────────────────────────
 // One small filter popover per `<th>` on desktop; a single combined modal
@@ -235,8 +237,36 @@ export function clearAllFilters() {
 }
 
 async function initColumnFilters() {
-  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
-  cardOpts = cardsSnap.exists() ? Object.keys(cardsSnap.data()).sort() : [];
+  const [cardsSnap, txnSnap] = await Promise.all([
+    getDoc(doc(db, 'config', 'cards')),
+    getDocs(query(collection(db, 'transactions'), orderBy('date', 'desc'))),
+  ]);
+  const configCards = cardsSnap.exists() ? cardsSnap.data() : {};
+
+  // Build status map from config/cards
+  cardStatusMap = {};
+  for (const [name, val] of Object.entries(configCards)) {
+    if (typeof val !== 'number' && val.deleted === true) {
+      cardStatusMap[name] = 'deleted';
+    } else {
+      const active = typeof val === 'number' ? true : val.active !== false;
+      cardStatusMap[name] = active ? 'active' : 'inactive';
+    }
+  }
+
+  // Cards present in transactions but absent entirely from config/cards are orphans → auto-add
+  const txnCardNames = new Set(txnSnap.docs.map(d => d.data().card).filter(Boolean));
+  const orphans = [...txnCardNames].filter(n => !(n in configCards));
+  if (orphans.length > 0) {
+    const updated = { ...configCards };
+    for (const name of orphans) {
+      updated[name] = { active: true, _autoAdded: true };
+      cardStatusMap[name] = 'active';
+    }
+    setDoc(doc(db, 'config', 'cards'), updated).catch(() => {});
+  }
+
+  cardOpts = [...new Set([...Object.keys(configCards), ...txnCardNames])].sort();
 
   document.querySelectorAll('.th-filter').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -370,12 +400,23 @@ function vtChipFor(t, vtChildMap) {
   return '';
 }
 
+const CARD_STATUS_ICONS = {
+  inactive: `<svg title="Archived card" class="card-status-icon card-status-archived" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 4h12v2H2V4zm1 3h10l-1 7H4L3 7z" fill="currentColor" opacity=".5"/><line x1="6" y1="1" x2="10" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  deleted:  `<svg title="Card removed from settings" class="card-status-icon card-status-deleted" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="4" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><line x1="1" y1="7" x2="15" y2="7" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="2" x2="4" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="5" y1="10" x2="11" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="11" y1="10" x2="5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+};
+
+function cardStatusIcon(cardName) {
+  const status = cardStatusMap[cardName];
+  return CARD_STATUS_ICONS[status] || '';
+}
+
 function rowHtml(t, vtChildMap = new Map()) {
   const chip = vtChipFor(t, vtChildMap);
+  const statusIcon = cardStatusIcon(t.card);
   return `
     <tr data-id="${t.id}">
       <td>${formatDateTime(t.date)}</td>
-      <td>${t.card || ''}</td>
+      <td>${t.card || ''}${statusIcon ? ' ' + statusIcon : ''}</td>
       <td class="desc-cell">
         <div class="desc-text" onclick="window.showDescPopover(event, this)">${t.description || ''}</div>
         ${chip ? `<div class="desc-chip-row">${chip}</div>` : ''}
@@ -439,7 +480,10 @@ function showTransactionModal(txn, cardsData) {
   modalCardsData = Object.fromEntries(
     Object.entries(cardsData).map(([name, val]) => [name, typeof val === 'number' ? val : (val.statementDate || 1)])
   );
-  const cards = Object.keys(cardsData);
+  // Ensure the transaction's own card (possibly deleted/orphan) always appears in the dropdown
+  const cardSet = new Set(Object.keys(cardsData));
+  if (txn?.card) cardSet.add(txn.card);
+  const cards = [...cardSet].sort();
 
   document.getElementById('modal-title').textContent = isEdit ? 'Edit Transaction' : 'Add Transaction';
   document.getElementById('txn-id').value = txn?.id || '';

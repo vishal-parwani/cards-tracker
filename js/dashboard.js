@@ -11,12 +11,14 @@ export async function loadDashboard() {
   try {
     const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
     const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
-    const cards = Object.entries(cardsData).map(([name, val]) => ({
-      name,
-      cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
-      dashboardWidget: resolveDashboardWidget(name, val),
-      showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
-    }));
+    const cards = Object.entries(cardsData)
+      .filter(([, val]) => typeof val === 'number' || (!val.deleted && val.active !== false))
+      .map(([name, val]) => ({
+        name,
+        cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
+        dashboardWidget: resolveDashboardWidget(name, val),
+        showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
+      }));
 
     const mbAepSnap = await getDoc(doc(db, 'config', 'mbAep'));
     const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
@@ -34,7 +36,7 @@ export async function loadDashboard() {
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
-          ${sortedCards.filter(r => r.showOnDashboard).map(r => renderCardBalanceCard(r)).join('')}
+          ${sortedCards.filter(r => r.showOnDashboard || r.stmtBalance !== 0).map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
       <section class="section">

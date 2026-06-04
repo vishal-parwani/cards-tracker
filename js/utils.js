@@ -71,7 +71,7 @@ export const CATEGORIES = [
 ];
 
 export const TRANSACTION_TAGS = [
-  '', 'SmartBuy', 'iShop', 'VERNOST', 'Grab Deals', 'AEP Ineligible'
+  '', 'SmartBuy', 'iShop', 'TWP', 'VERNOST', 'Grab Deals', 'AEP Ineligible'
 ];
 
 // Voucher-trade helpers (parent/child schema). Children store haircut in ₹

@@ -42,6 +42,7 @@ function autoComputePoints() {
   const category = document.getElementById('txn-category').value;
   const type     = document.getElementById('txn-type').value;
   const tag      = document.getElementById('txn-tag').value;
+  const description = document.getElementById('txn-description').value;
 
   // Magnus Burgundy edit-preserve: the backend prorates points across AEP
   // bands (Band 2 = 35/200, vs base 12/200); the UI can't replicate that
@@ -65,7 +66,7 @@ function autoComputePoints() {
   }
 
   document.getElementById('txn-points').value =
-    computePointsForTag(card, amount, category, type, tag);
+    computePointsForTag(card, amount, category, type, tag, description);
 }
 
 // Auto-set the tag from card+description unless the user has touched it.

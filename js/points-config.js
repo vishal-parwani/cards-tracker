@@ -12,6 +12,7 @@ export const CARD_POINTS_RATES = {
   'Infinia':         { rate: 5,  per: 150 },
   'ICICI EPM':       { rate: 6,  per: 200 },
   'Times Black':     { rate: 2,  per: 100 },
+  'HSBC Premier':    { rate: 3,  per: 100 },
 };
 
 // Categories that earn ZERO base points, per card. Magnus Burgundy is
@@ -21,7 +22,17 @@ export const CARD_EXCLUDED_CATS = {
   'Infinia':     new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Rent', 'Insurance', 'Wallet Load']),
   'ICICI EPM':   new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
   'Times Black': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
+  'HSBC Premier': new Set(['Fuel', 'Fees & Charges']),
 };
+
+// HSBC Premier earns base 3/100 in these categories only up to ₹1L cumulative
+// spend/calendar month (combined). The UI guide shows the un-capped base
+// (backend enforces the ₹1L spend cap, same as the SmartBuy/iShop caps).
+export const HSBC_CAPPED_CATS = new Set([
+  'Utilities & Telecom', 'Government Services', 'Education & Classes',
+  'Rent', 'Shopping - Jewellery', 'Insurance', 'Wallet Load',
+]);
+export const HSBC_CAPPED_SPEND_LIMIT = 100000;
 
 // Magnus AEP-excluded categories. Backend uses this set for BOTH AEP
 // eligibility AND base-point exclusion on Magnus Burgundy
@@ -74,6 +85,17 @@ export function resolveDashboardWidget(name, value) {
   return DEFAULT_WIDGET_BY_NAME[name] || '';
 }
 
+// HSBC "Travel with Points" portal total rates (pts per ₹100), mirroring
+// processor's _hsbc_twp_rate. Portal txns land as "HSBCIN TWP FLIGHT" etc.
+const HSBC_TWP_RATES = [['HOTEL', 36], ['FLIGHT', 18], ['CAR', 6]];
+export function hsbcTwpRate(descUpper) {
+  if (!/\bTWP\b/.test(descUpper)) return null;
+  for (const [kw, rate] of HSBC_TWP_RATES) {
+    if (descUpper.includes(kw)) return rate;
+  }
+  return null;
+}
+
 // Mirror processor's derive_transaction_tag(card, description).
 // Tag drives accelerated points; UI and processor derive it identically so
 // manual edits stay consistent with automated writes.
@@ -85,12 +107,13 @@ export function deriveTag(card, description) {
       (stripped.includes('ISHOP') || stripped.includes('REWARD360GLOB'))) {
     return 'iShop';
   }
+  if (card === 'HSBC Premier' && hsbcTwpRate(desc) !== null) return 'TWP';
   return '';
 }
 
 // Compute points keyed off tag (uncapped — processor enforces monthly caps
 // at write time; the UI shows the un-capped value as a guide).
-export function computePointsForTag(card, amount, category, type, tag) {
+export function computePointsForTag(card, amount, category, type, tag, description = '') {
   if (type === 'credit') return 0;
   if (card === 'Magnus Burgundy') {
     // Backend zeros base points whenever the category is AEP-excluded.
@@ -112,6 +135,13 @@ export function computePointsForTag(card, amount, category, type, tag) {
   }
   if (card === 'Times Black' && tag === 'iShop') {
     return Math.floor(amount / 100) * 12;  // 6x
+  }
+  if (card === 'HSBC Premier') {
+    // TWP portal: Flight 18, Hotel 36, Car 6 per ₹100 (description-driven,
+    // matching the backend). Capped cats earn base 3/100 here (un-capped
+    // guide; backend enforces the ₹1L/mo spend cap). Fuel/Fees already 0 above.
+    const twp = hsbcTwpRate((description || '').toUpperCase());
+    if (twp !== null) return Math.floor(amount / 100) * twp;
   }
   const r = CARD_POINTS_RATES[card];
   return r ? Math.floor(amount / r.per) * r.rate : 0;

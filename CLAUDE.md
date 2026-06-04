@@ -31,6 +31,10 @@ python3 -m http.server 3456
 
 `.claude/launch.json` configures this for Claude Code's web runner.
 
+## Deploy
+
+The live site (`cards.vishalparwani.com`) is served by **GitHub Pages from `main`** — a push to `main` triggers the "pages build and deployment" run automatically; there is no deploy workflow to run. **Convention (2026-06-04): merge the feature branch to `main` before deploying — i.e. deploy = merge to `main`, never deploy from a feature branch.** Bump `CACHE_VERSION` in `sw.js` whenever a precached shell file changes so the service worker purges the old cache on next launch. (A stale `deploy.yml` "Deploy to Firebase Hosting" workflow was **deleted** 2026-06-04 — it failed on every push because no `FIREBASE_SERVICE_ACCOUNT` secret was set in this repo, and Pages, not Firebase Hosting, is the real host.)
+
 ---
 
 ## Architecture

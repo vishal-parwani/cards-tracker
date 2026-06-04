@@ -500,6 +500,18 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-date').value = date;
   document.getElementById('txn-card').innerHTML = cards.map(c => `<option value="${c}" ${txn?.card === c ? 'selected' : ''}>${c}</option>`).join('');
   document.getElementById('txn-description').value = txn?.description || '';
+  // Populate category + tag dropdowns from the canonical lists, always keeping
+  // the txn's own stored value as an option (like the card dropdown above) so a
+  // backend/legacy value that isn't in the list can't be silently blanked on edit.
+  const cats = [...CATEGORIES];
+  if (txn?.category && !cats.includes(txn.category)) cats.push(txn.category);
+  document.getElementById('txn-category').innerHTML =
+    '<option value="">Select category</option>' +
+    cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  const tags = [...TRANSACTION_TAGS];
+  if (txn?.transactionTag && !tags.includes(txn.transactionTag)) tags.push(txn.transactionTag);
+  document.getElementById('txn-tag').innerHTML =
+    tags.map(t => `<option value="${t}">${t || 'None'}</option>`).join('');
   document.getElementById('txn-category').value = txn?.category || '';
   document.getElementById('txn-amount').value = txn?.amount || '';
   document.getElementById('txn-type').value = txn?.type || 'debit';

@@ -183,14 +183,8 @@
         </div>
         <div class="form-row">
           <label>Category</label>
-          <select id="txn-category">
-            <option value="">Select category</option>
-            <option>Food & Dining</option><option>Shopping</option><option>Travel</option>
-            <option>Entertainment</option><option>Groceries</option><option>Electronics</option>
-            <option>Rent</option><option>Utilities</option><option>Health & Medical</option>
-            <option>Insurance</option><option>Fuel</option><option>Education & Classes</option>
-            <option>Fees & Charges</option><option>Wallet Load</option><option>Miscellaneous</option>
-          </select>
+          <!-- options populated from CATEGORIES in transactions.js::showTransactionModal -->
+          <select id="txn-category"></select>
         </div>
         <div class="form-row two-col">
           <div>
@@ -212,11 +206,8 @@
           </div>
           <div>
             <label>Tag</label>
-            <select id="txn-tag">
-              <option value="">None</option>
-              <option>SmartBuy</option><option>iShop</option><option>VERNOST</option>
-              <option>Grab Deals</option><option>AEP Ineligible</option>
-            </select>
+            <!-- options populated from TRANSACTION_TAGS in transactions.js::showTransactionModal -->
+            <select id="txn-tag"></select>
           </div>
         </div>
         <input type="hidden" id="txn-statement-period">

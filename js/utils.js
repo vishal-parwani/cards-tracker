@@ -64,10 +64,17 @@ export function getBillingCycleLabel(cutoffDay) {
   return `${start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
 }
 
+// Must stay in sync with the processor's _CATEGORY_RULES outputs
+// (cards-processor/firestore_utils.py) so a backend-written category always has
+// a matching dropdown option — otherwise editing a txn silently blanks it.
 export const CATEGORIES = [
-  'Food & Dining', 'Shopping', 'Travel', 'Entertainment', 'Groceries',
-  'Electronics', 'Rent', 'Utilities', 'Health & Medical', 'Insurance',
-  'Fuel', 'Education & Classes', 'Fees & Charges', 'Wallet Load', 'Miscellaneous'
+  'Food & Dining', 'Grocery', 'Shopping - Online', 'Shopping - Apparel',
+  'Shopping - Electronics', 'Shopping - Home', 'Shopping - Jewellery',
+  'Shopping - Software', 'Travel', 'Travel - Air', 'Travel - Hotels',
+  'Entertainment', 'Subscriptions', 'Health & Medical', 'Personal Care',
+  'Auto & Maintenance', 'Rent', 'Utilities & Telecom', 'Education & Classes',
+  'Insurance', 'Fuel', 'Fees & Charges', 'Bill Payments', 'Donations',
+  'Investments', 'Wallet Load', 'Miscellaneous'
 ];
 
 export const TRANSACTION_TAGS = [

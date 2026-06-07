@@ -169,6 +169,7 @@ The remote URL uses **SSH** (`git@github.com:vishal-parwani/...`). SSH key at `~
 
 ## Conventions
 
+- **Always show a visual preview before finalizing/committing any UI change.** Live preview of the real app is blocked by Apple Sign-In, so build a standalone scratch mockup HTML that links the real `css/style.css` and hardcodes sample data + the new markup (prior art: `mobile-mockup.html`), then `open` it for review. Iterate on the preview until approved, then wire into the real files and delete the mockup.
 - No emoji in code or commit messages unless Vishal asks.
 - Commit messages: short subject (~70 chars), no body unless the change is non-trivial. Existing repo style: imperative mood (`Add`, `Fix`, `Update`).
 - No `Co-Authored-By` trailer — Vishal doesn't use it.

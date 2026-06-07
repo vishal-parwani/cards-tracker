@@ -24,6 +24,8 @@ const FILTER_COL_LABELS = {
 };
 const CATEGORY_OPTS = CATEGORIES;
 const TAG_OPTS = TRANSACTION_TAGS.filter(t => t !== '');
+// "More filters" options (combined popover, not tied to a column header).
+const SOURCE_OPTS = ['Manual', 'SMS', 'Email', 'PDF'];
 let cardOpts = [];
 let columnFiltersInit = false;
 let colFilters = {
@@ -33,7 +35,27 @@ let colFilters = {
   category: [],
   amount: { min: '', max: '' },
   tag: [],
+  source: [],
+  vt: '',
 };
+
+// A txn matches the source filter if its `source` matches ANY selected option.
+// 'sms+email' (an SMS doc later enriched by the Gmail pass) matches both SMS
+// and Email; a missing/'manual' source matches Manual.
+function txnMatchesSource(t, sel) {
+  const s = (t.source || '').toLowerCase();
+  return sel.some(opt => {
+    if (opt === 'Manual') return !s || s === 'manual';
+    if (opt === 'SMS')    return s.includes('sms');
+    if (opt === 'Email')  return s.includes('email');
+    if (opt === 'PDF')    return s === 'pdf';
+    return false;
+  });
+}
+
+function txnIsVt(t) {
+  return !!(t.voucherTradeParentId || (t.voucherTradeChildIds || []).length);
+}
 
 function autoComputePoints() {
   if (pointsManuallyEdited) return;
@@ -99,7 +121,7 @@ function hasActiveFilters() {
   const f = colFilters;
   return !!(f.date.from || f.date.to || f.card.length || f.description ||
            f.category.length || f.amount.min !== '' || f.amount.max !== '' ||
-           f.tag.length);
+           f.tag.length || f.source.length || f.vt);
 }
 
 function colHasFilter(col) {
@@ -172,6 +194,7 @@ function updateFilterIcons() {
   });
   document.getElementById('clear-filters-btn')?.classList.toggle('hidden', !hasActiveFilters());
   document.getElementById('txn-filter-mobile-btn')?.classList.toggle('cf-on', hasActiveFilters());
+  document.getElementById('more-filters-btn')?.classList.toggle('cf-on', !!(colFilters.source.length || colFilters.vt));
 }
 
 function openColFilterPopover(btn, col) {
@@ -209,6 +232,63 @@ function openColFilterPopover(btn, col) {
   setTimeout(() => document.addEventListener('click', closer), 0);
 }
 
+function buildMoreFiltersBody() {
+  const src = colFilters.source;
+  const vt = colFilters.vt || 'all';
+  const srcChecks = SOURCE_OPTS.map(o => `
+    <label class="cf-check"><input type="checkbox" class="mf-source" value="${o}" ${src.includes(o) ? 'checked' : ''}><span>${o}</span></label>`).join('');
+  const vtRadios = [['all', 'All'], ['vt', 'VT only'], ['nonvt', 'Non-VT']].map(([v, label]) => `
+    <label class="cf-radio"><input type="radio" name="mf-vt" value="${v}" ${vt === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
+  return `
+    <div class="cf-section">
+      <div class="cf-title">Source</div>
+      <div class="cf-checklist">${srcChecks}</div>
+    </div>
+    <div class="cf-section">
+      <div class="cf-title">Voucher Trade</div>
+      ${vtRadios}
+    </div>`;
+}
+
+function readMoreFilters(root) {
+  colFilters.source = [...root.querySelectorAll('.mf-source:checked')].map(c => c.value);
+  const vt = root.querySelector('input[name="mf-vt"]:checked')?.value || 'all';
+  colFilters.vt = vt === 'all' ? '' : vt;
+}
+
+function openMoreFiltersPopover(btn) {
+  document.querySelector('.col-filter-pop')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'col-filter-pop';
+  pop.style.width = '240px';
+  pop.innerHTML = `
+    ${buildMoreFiltersBody()}
+    <div class="cf-pop-actions"><button type="button" class="btn btn-sm btn-secondary cf-clear">Clear</button></div>
+  `;
+  document.body.appendChild(pop);
+  const rect = btn.getBoundingClientRect();
+  pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  pop.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - pop.offsetWidth - 8) + 'px';
+
+  const apply = () => { readMoreFilters(pop); applyColumnFilters(); updateFilterIcons(); };
+  pop.addEventListener('change', apply);
+  pop.querySelector('.cf-clear').addEventListener('click', () => {
+    colFilters.source = [];
+    colFilters.vt = '';
+    pop.remove();
+    applyColumnFilters();
+    updateFilterIcons();
+  });
+
+  const closer = ev => {
+    if (!pop.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)) {
+      pop.remove();
+      document.removeEventListener('click', closer);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closer), 0);
+}
+
 function openColFilterModal() {
   const body = document.getElementById('col-filter-modal-body');
   body.innerHTML = ['date','card','description','category','amount','tag'].map(col => `
@@ -232,6 +312,7 @@ export function clearAllFilters() {
   colFilters = {
     date: { from: '', to: '' }, card: [], description: '',
     category: [], amount: { min: '', max: '' }, tag: [],
+    source: [], vt: '',
   };
   updateFilterIcons();
   loadTransactions(true);
@@ -276,6 +357,10 @@ async function initColumnFilters() {
     });
   });
   document.getElementById('txn-filter-mobile-btn')?.addEventListener('click', openColFilterModal);
+  document.getElementById('more-filters-btn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    openMoreFiltersPopover(e.currentTarget);
+  });
   const body = document.getElementById('col-filter-modal-body');
   body?.addEventListener('input', onModalFilterChange);
   body?.addEventListener('change', onModalFilterChange);
@@ -388,6 +473,10 @@ async function buildVtEnrichment(txns) {
   return childMap;
 }
 
+function srcChipFor(t) {
+  return t.source === 'pdf' ? '<span class="src-chip src-chip-pdf">PDF</span>' : '';
+}
+
 function vtChipFor(t, vtChildMap) {
   if (t.voucherTradeParentId) {
     const children = vtChildMap.get(t.voucherTradeParentId) || [];
@@ -412,7 +501,7 @@ function cardStatusIcon(cardName) {
 }
 
 function rowHtml(t, vtChildMap = new Map()) {
-  const chip = vtChipFor(t, vtChildMap);
+  const chipRow = srcChipFor(t) + vtChipFor(t, vtChildMap);
   const statusIcon = cardStatusIcon(t.card);
   return `
     <tr data-id="${t.id}">
@@ -420,7 +509,7 @@ function rowHtml(t, vtChildMap = new Map()) {
       <td>${t.card || ''}${statusIcon ? ' ' + statusIcon : ''}</td>
       <td class="desc-cell">
         <div class="desc-text" onclick="window.showDescPopover(event, this)">${t.description || ''}</div>
-        ${chip ? `<div class="desc-chip-row">${chip}</div>` : ''}
+        ${chipRow ? `<div class="desc-chip-row">${chipRow}</div>` : ''}
       </td>
       <td>${t.category || ''}</td>
       <td class="amount-cell ${t.type === 'credit' ? 'credit' : ''}">${t.type === 'credit' ? '-' : ''}${formatCurrency(t.amount)}</td>
@@ -927,6 +1016,9 @@ async function loadFilteredTransactions() {
     }
     if (f.amount.min !== '') { const m = parseFloat(f.amount.min); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) >= m); }
     if (f.amount.max !== '') { const m = parseFloat(f.amount.max); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) <= m); }
+    if (f.source.length)   txns = txns.filter(t => txnMatchesSource(t, f.source));
+    if (f.vt === 'vt')     txns = txns.filter(t => txnIsVt(t));
+    else if (f.vt === 'nonvt') txns = txns.filter(t => !txnIsVt(t));
 
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, true, vtChildMap);

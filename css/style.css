@@ -167,6 +167,7 @@ body {
 .balance-label  { font-size: 12px; color: var(--text-sec); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 .balance-amount { font-size: 15px; font-weight: 700; color: var(--text); white-space: nowrap; min-width: 0; text-align: right; }
 .balance-amount.accent { color: var(--terra); font-size: 17px; font-weight: 800; }
+.balance-amount.accent.credit { color: var(--sage); }
 
 /* ── Chart Cards ── */
 .chart-card {
@@ -364,6 +365,14 @@ body {
 .cf-check input[type="checkbox"] {
   width: 15px; height: 15px; accent-color: var(--terra); cursor: pointer;
 }
+.cf-radio {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 6px;
+  font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.cf-radio:hover { background: var(--bar-bg); }
+.cf-radio input[type="radio"] { width: 15px; height: 15px; accent-color: var(--terra); cursor: pointer; }
+#more-filters-btn.cf-on { background: var(--terra); color: #fff; border-color: var(--terra); }
 .cf-pop-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
 
 /* Mobile bar + modal sections */
@@ -378,6 +387,16 @@ body {
 #txn-filter-mobile-btn.cf-on { background: var(--terra); color: #fff; border-color: var(--terra); }
 
 /* ── Settings ── */
+.settings-pref-row {
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px 18px; box-shadow: 0 1px 6px rgba(92,61,46,0.08);
+}
+.settings-pref-row input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--terra); cursor: pointer; margin-top: 2px; flex-shrink: 0;
+}
+.settings-pref-row strong { display: block; font-size: 14px; color: var(--text); }
+.settings-pref-row .settings-hint { display: block; margin-top: 4px; font-style: normal; }
 .cards-settings-list { display: flex; flex-direction: column; gap: 10px; }
 .settings-card {
   background: var(--card); border-radius: 12px;
@@ -554,6 +573,14 @@ span.flatpickr-weekday {
 .flatpickr-day.flatpickr-disabled { color: var(--text-sec); opacity: 0.45; }
 .numInputWrapper span.arrowUp::after { border-bottom-color: var(--text-sec); }
 .numInputWrapper span.arrowDown::after { border-top-color: var(--text-sec); }
+
+/* Source pill — mirrors .vt-chip sizing, distinct palette. PDF only for now. */
+.src-chip {
+  display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 5px;
+  border-radius: 6px; margin-left: 6px; vertical-align: middle; letter-spacing: 0.2px;
+  line-height: 1.3;
+}
+.src-chip-pdf { background: #dce6f2; color: #3a5a86; }
 
 /* ── Voucher trade extensions ── */
 .vt-chip {

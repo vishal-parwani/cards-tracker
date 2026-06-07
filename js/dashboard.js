@@ -18,6 +18,7 @@ export async function loadDashboard() {
         cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
         dashboardWidget: resolveDashboardWidget(name, val),
         showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
+        autoAdjustCredits: typeof val === 'number' ? true : (val.autoAdjustCredits !== false),
       }));
 
     const mbAepSnap = await getDoc(doc(db, 'config', 'mbAep'));
@@ -36,7 +37,7 @@ export async function loadDashboard() {
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
-          ${sortedCards.filter(r => r.showOnDashboard || r.stmtBalance !== 0).map(r => renderCardBalanceCard(r)).join('')}
+          ${sortedCards.filter(r => r.showOnDashboard || r.totalOutstanding !== 0).map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
       <section class="section">
@@ -80,6 +81,7 @@ export async function loadDashboard() {
 }
 
 async function loadCardData(card, monthStart) {
+  const autoAdjustCredits = card.autoAdjustCredits !== false;
   const stmtStart = getStatementStartDate(card.cutoffDay);
   // Upper bound the statement query so next-cycle / future-dated txns don't
   // leak in. End is the last day of the current billing cycle, inclusive.
@@ -107,22 +109,33 @@ async function loadCardData(card, monthStart) {
     ))
   ]);
 
-  // stmtBalance = all-time net outstanding (total debits minus total credits/payments
-  // ever recorded). This is the true card balance — it accounts for carry-forward from
-  // previous cycles that were only partially paid. stmtSpend = debits only in the
-  // current billing cycle, the "how much did I spend this cycle" number.
-  let stmtBalance = 0;
+  // totalOutstanding = all-time net (total debits minus total credits/payments ever
+  // recorded). The true current balance on the card, accounting for carry-forward
+  // from partially-paid prior cycles.
+  let totalOutstanding = 0;
   allTimeSnap.forEach(d => {
     const t = d.data();
     const amt = t.amount || 0;
-    if (t.type === 'debit') stmtBalance += amt;
-    else stmtBalance -= amt;
+    if (t.type === 'debit') totalOutstanding += amt;
+    else totalOutstanding -= amt;
   });
-  let stmtSpend = 0;
+
+  // Current billing cycle: cycleDebits = "Cycle Spend". nextStatement = the
+  // upcoming bill. With credit auto-adjust ON (default) current-cycle credits pay
+  // down the prior statement FIRST; only the leftover (once the prior balance is
+  // cleared) reduces Next Statement — so a credit on an already-paid-off card
+  // correctly lowers the upcoming bill instead of vanishing. With it OFF, all
+  // current-cycle credits net straight into Next Statement.
+  let cycleDebits = 0, cycleCredits = 0;
   stmtSnap.forEach(d => {
     const t = d.data();
-    if (t.type === 'debit') stmtSpend += (t.amount || 0);
+    if (t.type === 'debit') cycleDebits += (t.amount || 0);
+    else cycleCredits += (t.amount || 0);
   });
+  const stmtSpend = cycleDebits;
+  const priorNet = totalOutstanding - (cycleDebits - cycleCredits);
+  const appliedToPrior = autoAdjustCredits ? Math.min(cycleCredits, Math.max(priorNet, 0)) : 0;
+  const nextStatement = cycleDebits - (cycleCredits - appliedToPrior);
 
   let mtdSpend = 0;
   let mtdTxns = [];
@@ -201,7 +214,8 @@ async function loadCardData(card, monthStart) {
 
   return {
     ...card,
-    stmtBalance,
+    totalOutstanding,
+    nextStatement,
     stmtSpend,
     mtdSpend,
     stmtStart,
@@ -306,9 +320,18 @@ function renderVtSummary(s) {
 }
 
 function renderTotalCard(cardResults) {
-  const totalStmt  = cardResults.reduce((sum, r) => sum + r.stmtBalance, 0);
+  const totalOutstanding = cardResults
+    .filter(r => r.totalOutstanding > 0)
+    .reduce((sum, r) => sum + r.totalOutstanding, 0);
+  const totalNext  = cardResults.reduce((sum, r) => sum + r.nextStatement, 0);
   const totalSpend = cardResults.reduce((sum, r) => sum + r.stmtSpend, 0);
   const totalMtd   = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
+  const cycleRow = totalSpend !== totalNext
+    ? `<div class="balance-row">
+        <span class="balance-label">Cycle Spend</span>
+        <span class="balance-amount">${formatCurrency(totalSpend)}</span>
+      </div>`
+    : '';
   return `
     <div class="balance-card total-card">
       <div class="balance-card-header">
@@ -316,13 +339,14 @@ function renderTotalCard(cardResults) {
         <span class="billing-cycle">Combined</span>
       </div>
       <div class="balance-row">
-        <span class="balance-label">Next Statement</span>
-        <span class="balance-amount accent">${formatCurrency(totalStmt)}</span>
+        <span class="balance-label">Total Outstanding</span>
+        <span class="balance-amount accent">${formatCurrency(totalOutstanding)}</span>
       </div>
       <div class="balance-row">
-        <span class="balance-label">Cycle Spend</span>
-        <span class="balance-amount">${formatCurrency(totalSpend)}</span>
+        <span class="balance-label">Next Statement</span>
+        <span class="balance-amount accent">${formatCurrency(totalNext)}</span>
       </div>
+      ${cycleRow}
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>
         <span class="balance-amount">${formatCurrency(totalMtd)}</span>
@@ -334,6 +358,18 @@ function renderTotalCard(cardResults) {
 function renderCardBalanceCard(r) {
   const aepRibbon = (r.dashboardWidget === 'mbAep' && r.magnusAepEligible >= 150000)
     ? `<span class="aep-ribbon">AEP On ✓</span>` : '';
+  const isCredit = r.totalOutstanding < 0;
+  const outstandingDisplay = isCredit
+    ? `${formatCurrency(r.totalOutstanding)} cr`
+    : formatCurrency(r.totalOutstanding);
+  // Cycle Spend only differs from Next Statement when credits are NOT auto-adjusted
+  // (toggle off) and there are current-cycle credits. Hide the row when identical.
+  const cycleRow = r.stmtSpend !== r.nextStatement
+    ? `<div class="balance-row">
+        <span class="balance-label">Cycle Spend</span>
+        <span class="balance-amount">${formatCurrency(r.stmtSpend)}</span>
+      </div>`
+    : '';
   return `
     <div class="balance-card">
       ${aepRibbon}
@@ -342,13 +378,14 @@ function renderCardBalanceCard(r) {
         <span class="billing-cycle">${r.billingCycle}</span>
       </div>
       <div class="balance-row">
-        <span class="balance-label">Next Statement</span>
-        <span class="balance-amount accent">${formatCurrency(r.stmtBalance)}</span>
+        <span class="balance-label">Total Outstanding</span>
+        <span class="balance-amount accent${isCredit ? ' credit' : ''}">${outstandingDisplay}</span>
       </div>
       <div class="balance-row">
-        <span class="balance-label">Cycle Spend</span>
-        <span class="balance-amount">${formatCurrency(r.stmtSpend)}</span>
+        <span class="balance-label">Next Statement</span>
+        <span class="balance-amount accent">${formatCurrency(r.nextStatement)}</span>
       </div>
+      ${cycleRow}
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>
         <span class="balance-amount">${formatCurrency(r.mtdSpend)}</span>

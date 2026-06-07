@@ -11,7 +11,7 @@ function normalizeCard(name, value) {
   if (typeof value === 'number') {
     return {
       name, statementDate: value, billPaymentDate: null, bank: '', last4: '',
-      active: true, deleted: false, showOnDashboard: true,
+      active: true, deleted: false, showOnDashboard: true, autoAdjustCredits: true,
       dashboardWidget: resolveDashboardWidget(name, value), dateHistory: [],
     };
   }
@@ -26,6 +26,7 @@ function normalizeCard(name, value) {
     active:          value.active          !== false,
     deleted:         value.deleted         === true,
     showOnDashboard: value.showOnDashboard !== false,
+    autoAdjustCredits: value.autoAdjustCredits !== false,
     dashboardWidget: resolveDashboardWidget(name, value),
     dateHistory:     value.dateHistory     || [],
   };
@@ -156,6 +157,7 @@ export function openAddCardModal() {
   document.getElementById('card-forex-input').value = '';
   document.getElementById('card-active-input').checked = true;
   document.getElementById('card-show-dashboard-input').checked = true;
+  document.getElementById('card-auto-adjust-input').checked = true;
   populateWidgetSelect('');
   document.getElementById('card-modal').classList.remove('hidden');
 }
@@ -174,6 +176,7 @@ export function openEditCardModal(name) {
   document.getElementById('card-forex-input').value = card.forexRate != null ? (card.forexRate * 100).toFixed(1) : '';
   document.getElementById('card-active-input').checked = card.active !== false;
   document.getElementById('card-show-dashboard-input').checked = card.showOnDashboard !== false;
+  document.getElementById('card-auto-adjust-input').checked = card.autoAdjustCredits !== false;
   populateWidgetSelect(card.dashboardWidget || '');
   document.getElementById('card-modal').classList.remove('hidden');
 }
@@ -190,6 +193,7 @@ export async function saveCard() {
   const forexRate       = forexRawInput !== '' ? parseFloat(forexRawInput) / 100 : null;
   const active          = document.getElementById('card-active-input').checked;
   const showOnDashboard = document.getElementById('card-show-dashboard-input').checked;
+  const autoAdjustCredits = document.getElementById('card-auto-adjust-input').checked;
   const dashboardWidget = document.getElementById('card-dashboard-widget-input').value;
 
   if (!newName) { alert('Card name is required.'); return; }
@@ -225,7 +229,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, dashboardWidget, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, autoAdjustCredits, dashboardWidget, dateHistory };
 
   if (isRename && !confirm(
     `Rename "${originalName}" to "${newName}"? This also updates all of its ` +

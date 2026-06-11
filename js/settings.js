@@ -11,7 +11,8 @@ function normalizeCard(name, value) {
   if (typeof value === 'number') {
     return {
       name, statementDate: value, billPaymentDate: null, bank: '', last4: '',
-      active: true, deleted: false, showOnDashboard: true, autoAdjustCredits: true,
+      active: true, deleted: false, showOnDashboard: true, showWhenZero: false,
+      showInTrackers: true, autoAdjustCredits: true,
       dashboardWidget: resolveDashboardWidget(name, value), dateHistory: [],
     };
   }
@@ -26,6 +27,8 @@ function normalizeCard(name, value) {
     active:          value.active          !== false,
     deleted:         value.deleted         === true,
     showOnDashboard: value.showOnDashboard !== false,
+    showWhenZero:    value.showWhenZero    === true,
+    showInTrackers:  value.showInTrackers  !== false,
     autoAdjustCredits: value.autoAdjustCredits !== false,
     dashboardWidget: resolveDashboardWidget(name, value),
     dateHistory:     value.dateHistory     || [],
@@ -33,9 +36,22 @@ function normalizeCard(name, value) {
 }
 
 function populateWidgetSelect(selected) {
-  document.getElementById('card-dashboard-widget-input').innerHTML = DASHBOARD_WIDGETS
+  const select = document.getElementById('card-dashboard-widget-input');
+  select.innerHTML = DASHBOARD_WIDGETS
     .map(w => `<option value="${w.id}"${w.id === (selected || '') ? ' selected' : ''}>${w.label}</option>`)
     .join('');
+  select.onchange = syncTrackerToggleState;
+}
+
+// "Show in Spend Trackers" only applies to cards mapped to an accelerated
+// reward widget; grey it out (and force off) when the widget is None.
+function syncTrackerToggleState() {
+  const hasWidget = document.getElementById('card-dashboard-widget-input').value !== '';
+  const input = document.getElementById('card-show-in-trackers-input');
+  input.disabled = !hasWidget;
+  if (!hasWidget) input.checked = false;
+  const row = input.closest('.form-row');
+  if (row) row.classList.toggle('row-disabled', !hasWidget);
 }
 
 export async function loadSettings() {
@@ -157,8 +173,11 @@ export function openAddCardModal() {
   document.getElementById('card-forex-input').value = '';
   document.getElementById('card-active-input').checked = true;
   document.getElementById('card-show-dashboard-input').checked = true;
+  document.getElementById('card-show-when-zero-input').checked = false;
+  document.getElementById('card-show-in-trackers-input').checked = true;
   document.getElementById('card-auto-adjust-input').checked = true;
   populateWidgetSelect('');
+  syncTrackerToggleState();
   document.getElementById('card-modal').classList.remove('hidden');
 }
 
@@ -176,8 +195,11 @@ export function openEditCardModal(name) {
   document.getElementById('card-forex-input').value = card.forexRate != null ? (card.forexRate * 100).toFixed(1) : '';
   document.getElementById('card-active-input').checked = card.active !== false;
   document.getElementById('card-show-dashboard-input').checked = card.showOnDashboard !== false;
+  document.getElementById('card-show-when-zero-input').checked = card.showWhenZero === true;
+  document.getElementById('card-show-in-trackers-input').checked = card.showInTrackers !== false;
   document.getElementById('card-auto-adjust-input').checked = card.autoAdjustCredits !== false;
   populateWidgetSelect(card.dashboardWidget || '');
+  syncTrackerToggleState();
   document.getElementById('card-modal').classList.remove('hidden');
 }
 
@@ -193,8 +215,10 @@ export async function saveCard() {
   const forexRate       = forexRawInput !== '' ? parseFloat(forexRawInput) / 100 : null;
   const active          = document.getElementById('card-active-input').checked;
   const showOnDashboard = document.getElementById('card-show-dashboard-input').checked;
+  const showWhenZero    = document.getElementById('card-show-when-zero-input').checked;
   const autoAdjustCredits = document.getElementById('card-auto-adjust-input').checked;
   const dashboardWidget = document.getElementById('card-dashboard-widget-input').value;
+  const showInTrackers  = dashboardWidget !== '' && document.getElementById('card-show-in-trackers-input').checked;
 
   if (!newName) { alert('Card name is required.'); return; }
   if (statementDate && (statementDate < 1 || statementDate > 31)) { alert('Statement date must be 1–31.'); return; }
@@ -229,7 +253,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, autoAdjustCredits, dashboardWidget, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, showWhenZero, showInTrackers, autoAdjustCredits, dashboardWidget, dateHistory };
 
   if (isRename && !confirm(
     `Rename "${originalName}" to "${newName}"? This also updates all of its ` +

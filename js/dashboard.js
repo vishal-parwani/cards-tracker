@@ -18,6 +18,8 @@ export async function loadDashboard() {
         cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
         dashboardWidget: resolveDashboardWidget(name, val),
         showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
+        showWhenZero: typeof val === 'number' ? false : (val.showWhenZero === true),
+        showInTrackers: typeof val === 'number' ? true : (val.showInTrackers !== false),
         autoAdjustCredits: typeof val === 'number' ? true : (val.autoAdjustCredits !== false),
       }));
 
@@ -29,7 +31,8 @@ export async function loadDashboard() {
       Promise.all(cards.map(c => loadCardData(c, monthStart))),
       loadVtSummary(monthStart),
     ]);
-    const sortedCards = [...cardResults].sort((a, b) => b.mtdSpend - a.mtdSpend);
+    const sortedCards = [...cardResults].sort((a, b) =>
+      (b.totalOutstanding - a.totalOutstanding) || a.name.localeCompare(b.name));
 
     container.innerHTML = `
       <section class="section">
@@ -37,7 +40,7 @@ export async function loadDashboard() {
         <div class="cards-grid">
           ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
-          ${sortedCards.filter(r => r.showOnDashboard || r.totalOutstanding !== 0).map(r => renderCardBalanceCard(r)).join('')}
+          ${sortedCards.filter(r => r.showOnDashboard && (r.totalOutstanding !== 0 || r.showWhenZero)).map(r => renderCardBalanceCard(r)).join('')}
         </div>
       </section>
       <section class="section">
@@ -230,7 +233,7 @@ async function loadCardData(card, monthStart) {
 }
 
 function renderTimesBlackIshop(cardResults) {
-  const tb = cardResults.find(r => r.dashboardWidget === 'timesBlackIshop');
+  const tb = cardResults.find(r => r.dashboardWidget === 'timesBlackIshop' && r.showInTrackers !== false);
   if (!tb) return '';
 
   const pts = tb.timesBlackIshopPts;
@@ -395,7 +398,7 @@ function renderCardBalanceCard(r) {
 }
 
 function renderMagnusAep(cardResults, mbAep) {
-  const magnus = cardResults.find(r => r.dashboardWidget === 'mbAep');
+  const magnus = cardResults.find(r => r.dashboardWidget === 'mbAep' && r.showInTrackers !== false);
   if (!magnus) return '';
 
   const spend = magnus.magnusAepEligible;
@@ -423,7 +426,7 @@ function renderMagnusAep(cardResults, mbAep) {
 }
 
 function renderInfiniaSmartBuy(cardResults) {
-  const infinia = cardResults.find(r => r.dashboardWidget === 'infiniaSb');
+  const infinia = cardResults.find(r => r.dashboardWidget === 'infiniaSb' && r.showInTrackers !== false);
   if (!infinia) return '';
 
   const accelPts = infinia.magnusSmartBuyPts;
@@ -452,7 +455,7 @@ function renderInfiniaSmartBuy(cardResults) {
 }
 
 function renderEpmIshop(cardResults) {
-  const epm = cardResults.find(r => r.dashboardWidget === 'epmIshop');
+  const epm = cardResults.find(r => r.dashboardWidget === 'epmIshop' && r.showInTrackers !== false);
   if (!epm) return '';
 
   const pts = epm.epmIshopPts;

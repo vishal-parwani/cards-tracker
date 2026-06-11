@@ -507,6 +507,10 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .toggle-wrap input:checked + .toggle-track .toggle-thumb { left: 18px; }
+.form-row-sub { padding-left: 18px; }
+.form-row-sub > label:first-child { font-size: 13px; color: var(--text-sec); }
+.form-row.row-disabled { opacity: 0.45; }
+.form-row.row-disabled .toggle-wrap { cursor: not-allowed; }
 .trade-desc { font-size: 13px; font-weight: 600; color: var(--text); background: #f0e0d0; padding: 10px 12px; border-radius: 9px; }
 
 /* ── States ── */

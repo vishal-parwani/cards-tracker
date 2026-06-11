@@ -48,6 +48,7 @@ export const ISHOP_CAP = 18000;
 export const ISHOP_DAILY_ACCEL_CAP = 10000;
 export const TIMES_BLACK_ISHOP_CAP = 15000;
 export const TIMES_BLACK_DAILY_ACCEL_CAP = 8000;
+export const HSBC_TWP_CAP = 18000;
 
 // AEP band defaults — overridden per-field by config/mbAep when present.
 export const AEP_BAND_DEFAULTS = {

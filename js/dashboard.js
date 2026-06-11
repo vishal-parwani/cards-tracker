@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
-import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP } from './points-config.js';
+import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP, HSBC_TWP_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
 export async function loadDashboard() {
@@ -513,17 +513,26 @@ function renderHsbcTwp(cardResults) {
   if (!hsbc) return '';
 
   const pts = hsbc.hsbcTwpPts;
-  const spend = hsbc.hsbcTwpSpend;
+  const cap = HSBC_TWP_CAP;
+  const remainingPts = Math.max(0, cap - pts);
+  // Flights earn at 6× (18 pts/₹100) — use that as the representative rate for
+  // the "spend to cap" estimate (hotel 12× / car 2× would reach it faster).
+  const remainingSpend = Math.ceil((remainingPts / 18) * 100);
+  const pct = Math.min(100, (pts / cap) * 100).toFixed(0);
 
   return `
     <div class="tracker-card">
       <div class="tracker-header">
         <span class="tracker-title">HSBC TWP</span>
-        <span class="tracker-badge badge-green">Active</span>
+        <span class="tracker-badge ${pts >= cap ? 'badge-red' : 'badge-green'}">${pts >= cap ? 'Cap reached' : 'Active'}</span>
       </div>
-      <div class="tracker-metric">${pts.toLocaleString('en-IN')} <span class="tracker-sub">TWP pts · MTD</span></div>
+      <div class="tracker-metric">${pts.toLocaleString('en-IN')} <span class="tracker-sub">/ 18,000 pts</span></div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar bar-sage ${pts >= cap ? 'bar-red' : ''}" style="width:${pct}%"></div>
+      </div>
       <div class="tracker-row">
-        <span>${formatCurrency(spend)} portal spend</span>
+        <span>${pts >= cap ? '✓ Cap reached' : formatCurrency(remainingSpend) + ' to max cap'}</span>
+        <span>${pct}% used</span>
       </div>
     </div>
   `;

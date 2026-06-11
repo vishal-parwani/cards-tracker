@@ -64,6 +64,7 @@ export const DASHBOARD_WIDGETS = [
   { id: 'infiniaSb',      label: 'Infinia SmartBuy' },
   { id: 'epmIshop',       label: 'EPM iShop' },
   { id: 'timesBlackIshop', label: 'Times Black iShop' },
+  { id: 'hsbcTwp',        label: 'HSBC TWP' },
 ];
 
 // Cards historically hard-linked to a widget. Used only as the default for
@@ -74,6 +75,7 @@ export const DEFAULT_WIDGET_BY_NAME = {
   'Infinia':         'infiniaSb',
   'ICICI EPM':       'epmIshop',
   'Times Black':     'timesBlackIshop',
+  'HSBC Premier':    'hsbcTwp',
 };
 
 // Resolve a card's dashboard widget from its raw config value, falling back

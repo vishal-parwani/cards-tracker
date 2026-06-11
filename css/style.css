@@ -428,7 +428,8 @@ body {
 .settings-detail-small { font-size: 11px; color: var(--text-sec); }
 .form-hint { font-weight: 400; font-size: 11px; color: var(--text-sec); }
 .settings-hint { font-size: 12px; color: var(--text-sec); font-weight: 600; margin-top: -8px; }
-.form-row-inline { flex-direction: row; align-items: center; gap: 10px; }
+.form-row.form-row-inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.form-row.form-row-inline > label:first-child { flex: 1; margin: 0; }
 .form-row-inline input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
 
 /* ── Load more ── */
@@ -507,9 +508,9 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .toggle-wrap input:checked + .toggle-track .toggle-thumb { left: 18px; }
-.form-row-sub { padding-left: 18px; }
-.form-row-sub > label:first-child { font-size: 13px; color: var(--text-sec); }
-.form-row.row-disabled { opacity: 0.45; }
+.form-row-sub { margin-top: -2px; padding-left: 14px; border-left: 2px solid var(--border); }
+.form-row.form-row-sub > label:first-child { font-size: 12px; font-weight: 600; color: var(--text-sec); }
+.form-row.row-disabled { opacity: 0.5; }
 .form-row.row-disabled .toggle-wrap { cursor: not-allowed; }
 .trade-desc { font-size: 13px; font-weight: 600; color: var(--text); background: #f0e0d0; padding: 10px 12px; border-radius: 9px; }
 

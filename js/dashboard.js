@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
-import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP } from './points-config.js';
+import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
 export async function loadDashboard() {
@@ -50,6 +50,7 @@ export async function loadDashboard() {
           ${renderInfiniaSmartBuy(cardResults)}
           ${renderEpmIshop(cardResults)}
           ${renderTimesBlackIshop(cardResults)}
+          ${renderHsbcTwp(cardResults)}
           ${renderVtSummary(vtSummary)}
         </div>
       </section>
@@ -196,6 +197,20 @@ async function loadCardData(card, monthStart) {
     epmDailyOverages.push(...overagesAll.slice(0, 2));
   }
 
+  // HSBC TWP travel portal — no monthly cap, so just sum MTD portal spend and
+  // the points it earns at the description-driven rate (Flight 18 / Hotel 36 /
+  // Car 6 per ₹100), matching the points-config guide.
+  let hsbcTwpSpend = 0;
+  let hsbcTwpPts = 0;
+  if (card.dashboardWidget === 'hsbcTwp') {
+    mtdTxns.forEach(t => {
+      if (t.type !== 'debit' || t.transactionTag !== 'TWP') return;
+      hsbcTwpSpend += t.amount || 0;
+      const rate = hsbcTwpRate((t.description || '').toUpperCase()) || 0;
+      hsbcTwpPts += Math.floor((t.amount || 0) / 100) * rate;
+    });
+  }
+
   const timesBlackDailyOverages = [];
   if (card.dashboardWidget === 'timesBlackIshop') {
     const dailyAccel = new Map();
@@ -228,6 +243,8 @@ async function loadCardData(card, monthStart) {
     epmDailyOverages,
     timesBlackIshopPts,
     timesBlackDailyOverages,
+    hsbcTwpSpend,
+    hsbcTwpPts,
     billingCycle: getBillingCycleLabel(card.cutoffDay)
   };
 }
@@ -487,6 +504,28 @@ function renderEpmIshop(cardResults) {
         <span>${pct}% used</span>
       </div>
       ${dailyWarning}
+    </div>
+  `;
+}
+
+function renderHsbcTwp(cardResults) {
+  const hsbc = cardResults.find(r => r.dashboardWidget === 'hsbcTwp' && r.showInTrackers !== false);
+  if (!hsbc) return '';
+
+  const pts = hsbc.hsbcTwpPts;
+  const spend = hsbc.hsbcTwpSpend;
+
+  return `
+    <div class="tracker-card">
+      <div class="tracker-header">
+        <span class="tracker-title">HSBC TWP</span>
+        <span class="tracker-badge ${spend > 0 ? 'badge-green' : 'badge-orange'}">${spend > 0 ? 'Active' : 'No spend'}</span>
+      </div>
+      <div class="tracker-metric">${pts.toLocaleString('en-IN')} <span class="tracker-sub">TWP pts · MTD</span></div>
+      <div class="tracker-row">
+        <span>${formatCurrency(spend)} portal spend</span>
+        <span>Flight 18 · Hotel 36 · Car 6 /₹100</span>
+      </div>
     </div>
   `;
 }

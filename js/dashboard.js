@@ -510,7 +510,10 @@ function renderEpmIshop(cardResults) {
 
 function renderHsbcTwp(cardResults) {
   const hsbc = cardResults.find(r => r.dashboardWidget === 'hsbcTwp' && r.showInTrackers !== false);
-  if (!hsbc) return '';
+  // TWP has no monthly cap, so an empty card carries no information — only show
+  // it once there's actual portal spend this month (unlike the cap trackers,
+  // which show 0 / cap progress to a goal).
+  if (!hsbc || hsbc.hsbcTwpSpend <= 0) return '';
 
   const pts = hsbc.hsbcTwpPts;
   const spend = hsbc.hsbcTwpSpend;
@@ -519,7 +522,7 @@ function renderHsbcTwp(cardResults) {
     <div class="tracker-card">
       <div class="tracker-header">
         <span class="tracker-title">HSBC TWP</span>
-        <span class="tracker-badge ${spend > 0 ? 'badge-green' : 'badge-orange'}">${spend > 0 ? 'Active' : 'No spend'}</span>
+        <span class="tracker-badge badge-green">Active</span>
       </div>
       <div class="tracker-metric">${pts.toLocaleString('en-IN')} <span class="tracker-sub">TWP pts · MTD</span></div>
       <div class="tracker-row">

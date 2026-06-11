@@ -54,6 +54,17 @@ function syncTrackerToggleState() {
   if (row) row.classList.toggle('row-disabled', !hasWidget);
 }
 
+// The "show even when 0" sub-option only makes sense when the card is shown on
+// the dashboard at all; grey it out (and force off) when Show on Dashboard is off.
+function syncShowWhenZeroState() {
+  const shown = document.getElementById('card-show-dashboard-input').checked;
+  const input = document.getElementById('card-show-when-zero-input');
+  input.disabled = !shown;
+  if (!shown) input.checked = false;
+  const row = input.closest('.form-row');
+  if (row) row.classList.toggle('row-disabled', !shown);
+}
+
 export async function loadSettings() {
   const container = document.getElementById('settings-content');
   container.innerHTML = '<p class="loading">Loading...</p>';
@@ -176,8 +187,10 @@ export function openAddCardModal() {
   document.getElementById('card-show-when-zero-input').checked = false;
   document.getElementById('card-show-in-trackers-input').checked = true;
   document.getElementById('card-auto-adjust-input').checked = true;
+  document.getElementById('card-show-dashboard-input').onchange = syncShowWhenZeroState;
   populateWidgetSelect('');
   syncTrackerToggleState();
+  syncShowWhenZeroState();
   document.getElementById('card-modal').classList.remove('hidden');
 }
 
@@ -198,8 +211,10 @@ export function openEditCardModal(name) {
   document.getElementById('card-show-when-zero-input').checked = card.showWhenZero === true;
   document.getElementById('card-show-in-trackers-input').checked = card.showInTrackers !== false;
   document.getElementById('card-auto-adjust-input').checked = card.autoAdjustCredits !== false;
+  document.getElementById('card-show-dashboard-input').onchange = syncShowWhenZeroState;
   populateWidgetSelect(card.dashboardWidget || '');
   syncTrackerToggleState();
+  syncShowWhenZeroState();
   document.getElementById('card-modal').classList.remove('hidden');
 }
 

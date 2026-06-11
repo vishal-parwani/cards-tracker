@@ -197,17 +197,18 @@ async function loadCardData(card, monthStart) {
     epmDailyOverages.push(...overagesAll.slice(0, 2));
   }
 
-  // HSBC TWP travel portal — no monthly cap, so just sum MTD portal spend and
-  // the points it earns at the description-driven rate (Flight 18 / Hotel 36 /
-  // Car 6 per ₹100), matching the points-config guide.
+  // HSBC TWP travel portal — accumulate the BONUS (accelerated) points only,
+  // i.e. the portal rate minus the 3/₹100 base (Flight 18→15, Hotel 36→33,
+  // Car 6→3 per ₹100). The 18,000/month cap is on this bonus portion.
   let hsbcTwpSpend = 0;
   let hsbcTwpPts = 0;
   if (card.dashboardWidget === 'hsbcTwp') {
     mtdTxns.forEach(t => {
       if (t.type !== 'debit' || t.transactionTag !== 'TWP') return;
+      const rate = hsbcTwpRate((t.description || '').toUpperCase());
+      if (rate === null) return;
       hsbcTwpSpend += t.amount || 0;
-      const rate = hsbcTwpRate((t.description || '').toUpperCase()) || 0;
-      hsbcTwpPts += Math.floor((t.amount || 0) / 100) * rate;
+      hsbcTwpPts += Math.floor((t.amount || 0) / 100) * (rate - 3);
     });
   }
 
@@ -515,9 +516,9 @@ function renderHsbcTwp(cardResults) {
   const pts = hsbc.hsbcTwpPts;
   const cap = HSBC_TWP_CAP;
   const remainingPts = Math.max(0, cap - pts);
-  // Flights earn at 6× (18 pts/₹100) — use that as the representative rate for
-  // the "spend to cap" estimate (hotel 12× / car 2× would reach it faster).
-  const remainingSpend = Math.ceil((remainingPts / 18) * 100);
+  // Flights earn 15 bonus pts/₹100 (5× of base 3) — use that as the
+  // representative rate for the "spend to cap" estimate (hotel/car reach it faster).
+  const remainingSpend = Math.ceil((remainingPts / 15) * 100);
   const pct = Math.min(100, (pts / cap) * 100).toFixed(0);
 
   return `

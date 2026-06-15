@@ -426,14 +426,6 @@ function renderCardBalanceCard(r) {
     : formatCurrency(r.totalOutstanding);
   // Header due tag shows just the bill day (the current statement's due date).
   const dueDay = r.billDay ? `<span class="due-day">Due ${ordinalDay(r.billDay)}</span>` : '';
-  // Cycle Spend only differs from Next Statement when credits are NOT auto-adjusted
-  // (toggle off) and there are current-cycle credits. Hide the row when identical.
-  const cycleRow = r.stmtSpend !== r.nextStatement
-    ? `<div class="balance-row">
-        <span class="balance-label">Cycle Spend</span>
-        <span class="balance-amount">${formatCurrency(r.stmtSpend)}</span>
-      </div>`
-    : '';
   return `
     <div class="balance-card">
       ${aepRibbon}
@@ -450,7 +442,6 @@ function renderCardBalanceCard(r) {
       </div>
       ${stmtRow('Current Statement', r.currentStatement, r.currentStatementDue)}
       ${stmtRow('Next Statement', r.nextStatement, r.nextStatementDue)}
-      ${cycleRow}
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>
         <span class="balance-amount">${formatCurrency(r.mtdSpend)}</span>

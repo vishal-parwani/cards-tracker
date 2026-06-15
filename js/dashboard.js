@@ -16,6 +16,7 @@ export async function loadDashboard() {
       .map(([name, val]) => ({
         name,
         cutoffDay: typeof val === 'number' ? val : (val.statementDate || 1),
+        billDay: typeof val === 'number' ? null : (val.billPaymentDate || null),
         dashboardWidget: resolveDashboardWidget(name, val),
         showOnDashboard: typeof val === 'number' ? true : (val.showOnDashboard !== false),
         showWhenZero: typeof val === 'number' ? false : (val.showWhenZero === true),
@@ -141,6 +142,21 @@ async function loadCardData(card, monthStart) {
   const appliedToPrior = autoAdjustCredits ? Math.min(cycleCredits, Math.max(priorNet, 0)) : 0;
   const nextStatement = cycleDebits - (cycleCredits - appliedToPrior);
 
+  // currentStatement = the already-generated bill currently outstanding (the
+  // carry-forward portion not part of the in-progress cycle).
+  const currentStatement = totalOutstanding - nextStatement;
+
+  // Due dates. A statement closes on cutoffDay and is due on billDay; when
+  // billDay <= cutoffDay the due date falls in the month after the cycle closes.
+  // The current statement closed at stmtStart (the most recent cutoff); the next
+  // statement closes one cycle later.
+  let currentStatementDue = null, nextStatementDue = null;
+  if (card.billDay) {
+    const dueOffset = card.billDay > card.cutoffDay ? 0 : 1;
+    currentStatementDue = new Date(stmtStart.getFullYear(), stmtStart.getMonth() + dueOffset, card.billDay);
+    nextStatementDue    = new Date(stmtStart.getFullYear(), stmtStart.getMonth() + 1 + dueOffset, card.billDay);
+  }
+
   let mtdSpend = 0;
   let mtdTxns = [];
   mtdSnap.forEach(d => {
@@ -235,6 +251,9 @@ async function loadCardData(card, monthStart) {
     ...card,
     totalOutstanding,
     nextStatement,
+    currentStatement,
+    currentStatementDue,
+    nextStatementDue,
     stmtSpend,
     mtdSpend,
     stmtStart,
@@ -345,6 +364,7 @@ function renderTotalCard(cardResults) {
     .filter(r => r.totalOutstanding > 0)
     .reduce((sum, r) => sum + r.totalOutstanding, 0);
   const totalNext  = cardResults.reduce((sum, r) => sum + r.nextStatement, 0);
+  const totalCurrent = cardResults.reduce((sum, r) => sum + r.currentStatement, 0);
   const totalSpend = cardResults.reduce((sum, r) => sum + r.stmtSpend, 0);
   const totalMtd   = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
   const cycleRow = totalSpend !== totalNext
@@ -364,6 +384,10 @@ function renderTotalCard(cardResults) {
         <span class="balance-amount accent">${formatCurrency(totalOutstanding)}</span>
       </div>
       <div class="balance-row">
+        <span class="balance-label">Current Statement</span>
+        <span class="balance-amount accent">${formatCurrency(totalCurrent)}</span>
+      </div>
+      <div class="balance-row">
         <span class="balance-label">Next Statement</span>
         <span class="balance-amount accent">${formatCurrency(totalNext)}</span>
       </div>
@@ -376,6 +400,31 @@ function renderTotalCard(cardResults) {
   `;
 }
 
+function ordinalDay(n) {
+  const v = n % 100;
+  const suffix = (v >= 11 && v <= 13) ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  return n + suffix;
+}
+
+function fmtDueShort(d) {
+  return d ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+}
+
+// A statement-outstanding row with the bill's due date stacked beneath the label
+// in small font + brackets (kept off the amount line so it never clips on a
+// narrow tile).
+function stmtRow(label, amount, dueDate) {
+  const dueNote = dueDate ? `<span class="due-note">(due ${fmtDueShort(dueDate)})</span>` : '';
+  return `
+      <div class="balance-row balance-row-stmt">
+        <span class="balance-label-col">
+          <span class="balance-label">${label}</span>
+          ${dueNote}
+        </span>
+        <span class="balance-amount accent">${formatCurrency(amount)}</span>
+      </div>`;
+}
+
 function renderCardBalanceCard(r) {
   const aepRibbon = (r.dashboardWidget === 'mbAep' && r.magnusAepEligible >= 150000)
     ? `<span class="aep-ribbon">AEP On ✓</span>` : '';
@@ -383,6 +432,8 @@ function renderCardBalanceCard(r) {
   const outstandingDisplay = isCredit
     ? `${formatCurrency(r.totalOutstanding)} cr`
     : formatCurrency(r.totalOutstanding);
+  // Header due tag shows just the bill day (the current statement's due date).
+  const dueDay = r.billDay ? `<span class="due-day">Due ${ordinalDay(r.billDay)}</span>` : '';
   // Cycle Spend only differs from Next Statement when credits are NOT auto-adjusted
   // (toggle off) and there are current-cycle credits. Hide the row when identical.
   const cycleRow = r.stmtSpend !== r.nextStatement
@@ -396,16 +447,17 @@ function renderCardBalanceCard(r) {
       ${aepRibbon}
       <div class="balance-card-header">
         <span class="card-name">${r.name}</span>
-        <span class="billing-cycle">${r.billingCycle}</span>
+        <div class="cycle-row">
+          <span class="billing-cycle">${r.billingCycle}</span>
+          ${dueDay}
+        </div>
       </div>
       <div class="balance-row">
         <span class="balance-label">Total Outstanding</span>
         <span class="balance-amount accent${isCredit ? ' credit' : ''}">${outstandingDisplay}</span>
       </div>
-      <div class="balance-row">
-        <span class="balance-label">Next Statement</span>
-        <span class="balance-amount accent">${formatCurrency(r.nextStatement)}</span>
-      </div>
+      ${stmtRow('Current Statement', r.currentStatement, r.currentStatementDue)}
+      ${stmtRow('Next Statement', r.nextStatement, r.nextStatementDue)}
       ${cycleRow}
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>

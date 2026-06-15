@@ -365,14 +365,7 @@ function renderTotalCard(cardResults) {
     .reduce((sum, r) => sum + r.totalOutstanding, 0);
   const totalNext  = cardResults.reduce((sum, r) => sum + r.nextStatement, 0);
   const totalCurrent = cardResults.reduce((sum, r) => sum + r.currentStatement, 0);
-  const totalSpend = cardResults.reduce((sum, r) => sum + r.stmtSpend, 0);
   const totalMtd   = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
-  const cycleRow = totalSpend !== totalNext
-    ? `<div class="balance-row">
-        <span class="balance-label">Cycle Spend</span>
-        <span class="balance-amount">${formatCurrency(totalSpend)}</span>
-      </div>`
-    : '';
   return `
     <div class="balance-card total-card">
       <div class="balance-card-header">
@@ -391,7 +384,6 @@ function renderTotalCard(cardResults) {
         <span class="balance-label">Next Statement</span>
         <span class="balance-amount accent">${formatCurrency(totalNext)}</span>
       </div>
-      ${cycleRow}
       <div class="balance-row">
         <span class="balance-label">MTD Spend</span>
         <span class="balance-amount">${formatCurrency(totalMtd)}</span>

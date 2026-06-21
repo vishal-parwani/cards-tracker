@@ -332,6 +332,23 @@ function onModalFilterChange(e) {
   updateFilterIcons();
 }
 
+// Set filters programmatically (e.g. drill-down from a dashboard chart) and
+// refresh the icons. Does NOT load — the caller switches to the tab, which
+// triggers loadTransactions → loadFilteredTransactions off the active filters.
+export function setExternalFilter({ category, card, dateFrom, dateTo } = {}) {
+  colFilters = {
+    date: { from: dateFrom || '', to: dateTo || '' },
+    card: card ? [card] : [],
+    description: '',
+    category: category ? [category] : [],
+    amount: { min: '', max: '' },
+    tag: [],
+    source: [],
+    vt: '',
+  };
+  updateFilterIcons();
+}
+
 export function clearAllFilters() {
   colFilters = {
     date: { from: '', to: '' }, card: [], description: '',

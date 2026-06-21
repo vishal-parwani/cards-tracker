@@ -51,6 +51,19 @@ function monthLabel(date) {
   return date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 }
 
+// Local YYYY-MM-DD (not toISOString — that shifts to UTC and can roll the day).
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Sum of slices the legend currently has visible (toggled-off ones excluded).
+function visibleTotal(chart) {
+  const data = chart.data.datasets[0].data;
+  let total = 0;
+  data.forEach((v, i) => { if (chart.getDataVisibility(i)) total += v; });
+  return total;
+}
+
 export async function loadCharts() {
   const now      = new Date();
   const ytdStart = new Date(now.getFullYear(), 0, 1);
@@ -68,9 +81,11 @@ export async function loadCharts() {
 
   // ── Build month list for bar chart ───────────────────────────────
   const months = [];
+  const monthStarts = [];
   const cursor = new Date(barStart.getFullYear(), barStart.getMonth(), 1);
   while (cursor <= now) {
     months.push(monthLabel(cursor));
+    monthStarts.push(new Date(cursor));
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
@@ -111,6 +126,14 @@ export async function loadCharts() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        onClick: (evt, els) => {
+          if (!els.length) return;
+          const el = els[0];
+          const card = barDatasets[el.datasetIndex].label;
+          const mStart = monthStarts[el.index];
+          const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0);
+          window.chartDrillDown?.({ card, dateFrom: ymd(mStart), dateTo: ymd(mEnd) });
+        },
         plugins: {
           legend: { position: 'bottom', labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12 } },
           tooltip: {
@@ -138,12 +161,55 @@ export async function loadCharts() {
     };
   }
 
-  function makeDonut(canvasId, existing, catMap) {
+  // Draws "%" + "₹value" on every slice that is ≥5% of the *visible* total
+  // (legend-toggled-off slices are excluded from both the total and labels),
+  // and keeps the top-right rupee total in sync on every render/legend toggle.
+  function donutLabelPlugin(totalElId) {
+    return {
+      id: 'donutLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        const ds = chart.data.datasets[0].data;
+        const total = visibleTotal(chart);
+        if (total <= 0) return;
+        meta.data.forEach((arc, i) => {
+          if (!chart.getDataVisibility(i)) return;
+          const v = ds[i] || 0;
+          const pct = (v / total) * 100;
+          if (pct < 5) return;
+          const ang = (arc.startAngle + arc.endAngle) / 2;
+          const r = (arc.innerRadius + arc.outerRadius) / 2;
+          const x = arc.x + Math.cos(ang) * r;
+          const y = arc.y + Math.sin(ang) * r;
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+          ctx.fillStyle = '#fff';
+          ctx.font = '800 11px Nunito, sans-serif';
+          ctx.strokeText(`${pct.toFixed(0)}%`, x, y - 6);
+          ctx.fillText(`${pct.toFixed(0)}%`, x, y - 6);
+          ctx.font = '700 10px Nunito, sans-serif';
+          ctx.strokeText(fmtK(v), x, y + 6);
+          ctx.fillText(fmtK(v), x, y + 6);
+          ctx.restore();
+        });
+      },
+      afterUpdate(chart) {
+        const el = totalElId && document.getElementById(totalElId);
+        if (el) el.textContent = '₹' + Math.round(visibleTotal(chart)).toLocaleString('en-IN');
+      },
+    };
+  }
+
+  function makeDonut(canvasId, totalElId, existing, catMap, periodStart) {
     const { labels, data, colors } = donutDatasets(catMap);
     if (existing) existing.destroy();
     const ctx = document.getElementById(canvasId);
     if (!ctx) return null;
-    return new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels,
@@ -153,18 +219,31 @@ export async function loadCharts() {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '62%',
+        onClick: (evt, els) => {
+          if (!els.length) return;
+          const cat = labels[els[0].index];
+          window.chartDrillDown?.({ category: cat, dateFrom: ymd(periodStart), dateTo: ymd(now) });
+        },
         plugins: {
           legend: { position: 'right', labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12, padding: 8 } },
           tooltip: {
             callbacks: {
-              label: ctx => ` ${ctx.label}: ${fmtK(ctx.raw)} (${((ctx.raw / ctx.dataset.data.reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%)`,
+              label: ctx => {
+                const total = visibleTotal(ctx.chart) || 1;
+                return ` ${ctx.label}: ${fmtK(ctx.raw)} (${((ctx.raw / total) * 100).toFixed(1)}%)`;
+              },
             },
           },
         },
       },
+      plugins: [donutLabelPlugin(totalElId)],
     });
+    // afterUpdate fires on creation too, but set the total explicitly in case.
+    const el = totalElId && document.getElementById(totalElId);
+    if (el) el.textContent = '₹' + Math.round(visibleTotal(chart)).toLocaleString('en-IN');
+    return chart;
   }
 
-  catYtdChart = makeDonut('chart-cat-ytd', catYtdChart, catYtd);
-  catMtdChart = makeDonut('chart-cat-mtd', catMtdChart, catMtd);
+  catYtdChart = makeDonut('chart-cat-ytd', 'chart-cat-ytd-total', catYtdChart, catYtd, ytdStart);
+  catMtdChart = makeDonut('chart-cat-mtd', 'chart-cat-mtd-total', catMtdChart, catMtd, mtdStart);
 }

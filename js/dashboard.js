@@ -65,13 +65,19 @@ export async function loadDashboard() {
         </div>
         <div class="charts-grid-donuts">
           <div class="chart-card">
-            <div class="chart-title">Spend by Category — YTD</div>
+            <div class="chart-head">
+              <div class="chart-title">Spend by Category — YTD</div>
+              <div class="chart-total" id="chart-cat-ytd-total"></div>
+            </div>
             <div class="chart-canvas-wrap chart-canvas-donut">
               <canvas id="chart-cat-ytd"></canvas>
             </div>
           </div>
           <div class="chart-card">
-            <div class="chart-title">Spend by Category — MTD</div>
+            <div class="chart-head">
+              <div class="chart-title">Spend by Category — MTD</div>
+              <div class="chart-total" id="chart-cat-mtd-total"></div>
+            </div>
             <div class="chart-canvas-wrap chart-canvas-donut">
               <canvas id="chart-cat-mtd"></canvas>
             </div>

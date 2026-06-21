@@ -8,7 +8,7 @@
 // Bump CACHE_VERSION on any deploy that changes a shell file below; the
 // activate handler purges every cache that isn't the current version.
 
-const CACHE_VERSION = 'cards-v17';
+const CACHE_VERSION = 'cards-v18';
 
 const SHELL = [
   '/',

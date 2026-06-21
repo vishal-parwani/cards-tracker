@@ -74,7 +74,7 @@ export const CATEGORIES = [
   'Entertainment', 'Subscriptions', 'Health & Medical', 'Personal Care',
   'Auto & Maintenance', 'Rent', 'Utilities & Telecom', 'Education & Classes',
   'Insurance', 'Fuel', 'Fees & Charges', 'Bill Payments', 'Donations',
-  'Investments', 'Wallet Load', 'Miscellaneous'
+  'Investments', 'Wallet Load', 'Voucher Trades', 'Miscellaneous'
 ];
 
 export const TRANSACTION_TAGS = [

@@ -590,15 +590,11 @@ function appendTotalsRow(txns) {
   const list = document.getElementById('transactions-list');
   list.insertAdjacentHTML('beforeend', `
     <tr class="txn-totals-row">
-      <td colspan="8">
-        <div class="txn-totals-inner">
-          <span class="txn-totals-count">${txns.length} transaction${txns.length === 1 ? '' : 's'}</span>
-          <span class="txn-totals-figs">
-            <span class="txn-totals-pts">${points.toLocaleString('en-IN')} pts</span>
-            <span class="txn-totals-amt ${net < 0 ? 'credit' : ''}" title="Debit ${formatCurrency(debit)} · Credit ${formatCurrency(credit)}">${formatCurrency(net)}</span>
-          </span>
-        </div>
-      </td>
+      <td colspan="4" class="txn-totals-label" data-label="Totals">Totals · ${txns.length} txn${txns.length === 1 ? '' : 's'}</td>
+      <td class="amount-cell txn-totals-amt ${net < 0 ? 'credit' : ''}" data-label="Net" title="Debit ${formatCurrency(debit)} · Credit ${formatCurrency(credit)}">${formatCurrency(net)}</td>
+      <td class="txn-totals-pts" data-label="Pts">${points.toLocaleString('en-IN')}</td>
+      <td></td>
+      <td></td>
     </tr>
   `);
 }

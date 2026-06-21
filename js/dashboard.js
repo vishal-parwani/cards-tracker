@@ -39,7 +39,7 @@ export async function loadDashboard() {
       <section class="section">
         <h2 class="section-title">Card Balances</h2>
         <div class="cards-grid">
-          ${renderTotalCard(cardResults, vtSummary)}
+          ${renderTotalCard(cardResults)}
           <div class="grid-row-break"></div>
           ${sortedCards.filter(r => r.showOnDashboard && (r.totalOutstanding !== 0 || r.showWhenZero)).map(r => renderCardBalanceCard(r)).join('')}
         </div>
@@ -118,19 +118,11 @@ async function loadCardData(card, monthStart) {
   // recorded). The true current balance on the card, accounting for carry-forward
   // from partially-paid prior cycles.
   let totalOutstanding = 0;
-  // reimbursableOutstanding = net of reimbursable-flagged spend not yet offset by
-  // reimbursable-flagged credits — the slice of the balance that's someone else's
-  // money. Feeds the All Cards "net of VT & reimbursements" row.
-  let reimbursableOutstanding = 0;
   allTimeSnap.forEach(d => {
     const t = d.data();
     const amt = t.amount || 0;
     if (t.type === 'debit') totalOutstanding += amt;
     else totalOutstanding -= amt;
-    if (t.reimbursable) {
-      if (t.type === 'debit') reimbursableOutstanding += amt;
-      else reimbursableOutstanding -= amt;
-    }
   });
 
   // Current billing cycle: cycleDebits = "Cycle Spend". nextStatement = the
@@ -258,7 +250,6 @@ async function loadCardData(card, monthStart) {
   return {
     ...card,
     totalOutstanding,
-    reimbursableOutstanding,
     nextStatement,
     currentStatement,
     currentStatementDue,
@@ -368,18 +359,13 @@ function renderVtSummary(s) {
   `;
 }
 
-function renderTotalCard(cardResults, vtSummary) {
+function renderTotalCard(cardResults) {
   const totalOutstanding = cardResults
     .filter(r => r.totalOutstanding > 0)
     .reduce((sum, r) => sum + r.totalOutstanding, 0);
   const totalNext  = cardResults.reduce((sum, r) => sum + r.nextStatement, 0);
   const totalCurrent = cardResults.reduce((sum, r) => sum + r.currentStatement, 0);
   const totalMtd   = cardResults.reduce((sum, r) => sum + r.mtdSpend, 0);
-  // Outstanding minus money that's coming back: pending voucher-trade exposure
-  // (all-time) and net reimbursable spend.
-  const pendingVt = vtSummary?.pending || 0;
-  const totalReimbursable = cardResults.reduce((sum, r) => sum + (r.reimbursableOutstanding || 0), 0);
-  const netOutstanding = totalOutstanding - pendingVt - totalReimbursable;
   return `
     <div class="balance-card total-card">
       <div class="balance-card-header">
@@ -389,10 +375,6 @@ function renderTotalCard(cardResults, vtSummary) {
       <div class="balance-row">
         <span class="balance-label">Total Outstanding</span>
         <span class="balance-amount accent">${formatCurrency(totalOutstanding)}</span>
-      </div>
-      <div class="balance-row balance-row-net">
-        <span class="balance-label balance-label-wrap">Outstanding net of VT &amp; reimbursements</span>
-        <span class="balance-amount accent">${formatCurrency(netOutstanding)}</span>
       </div>
       <div class="balance-row">
         <span class="balance-label">Current Statement</span>

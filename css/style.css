@@ -186,7 +186,11 @@ body {
 .chart-card-wide { width: 100%; }
 .charts-grid-donuts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .chart-title { font-size: 13px; font-weight: 800; color: var(--text-sec); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 14px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 14px; }
+.chart-head .chart-title { margin-bottom: 0; }
+.chart-total { font-size: 15px; font-weight: 800; color: var(--terra); white-space: nowrap; }
 .chart-canvas-wrap { position: relative; }
+.chart-canvas-donut canvas, .chart-canvas-bar canvas { cursor: pointer; }
 .chart-canvas-bar   { height: 280px; }
 .chart-canvas-donut { height: 240px; }
 

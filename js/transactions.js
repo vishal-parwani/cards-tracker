@@ -57,6 +57,30 @@ function txnIsVt(t) {
   return !!(t.voucherTradeParentId || (t.voucherTradeChildIds || []).length);
 }
 
+// One-time backfill: stamp category 'Voucher Trades' on every transaction
+// already linked to a voucher trade (debits carrying voucherTradeParentId).
+// Guarded by a flag in config/migrations so it runs exactly once, then no-ops.
+export async function runVtCategoryMigration() {
+  const flagRef = doc(db, 'config', 'migrations');
+  const flagSnap = await getDoc(flagRef);
+  if (flagSnap.exists() && flagSnap.data().vtCategoryBackfill) return;
+
+  const snap = await getDocs(query(
+    collection(db, 'transactions'),
+    where('voucherTradeParentId', '!=', null),
+  ));
+  let n = 0;
+  let batch = writeBatch(db);
+  for (const d of snap.docs) {
+    if (d.data().category === 'Voucher Trades') continue;
+    batch.update(d.ref, { category: 'Voucher Trades' });
+    n++;
+    if (n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+  }
+  if (n % 400 !== 0) await batch.commit();
+  await setDoc(flagRef, { vtCategoryBackfill: true }, { merge: true });
+}
+
 function autoComputePoints() {
   if (pointsManuallyEdited) return;
   const card     = document.getElementById('txn-card').value;
@@ -585,6 +609,8 @@ function showTransactionModal(txn, cardsData) {
     type: txn?.type || null,
     category: txn?.category || null,
     pointsEarned: txn?.pointsEarned || 0,
+    voucherTradeParentId: txn?.voucherTradeParentId || null,
+    voucherTradeChildIds: txn?.voucherTradeChildIds || null,
   } : null;
   document.getElementById('txn-date').value = date;
   document.getElementById('txn-card').innerHTML = cards.map(c => `<option value="${c}" ${txn?.card === c ? 'selected' : ''}>${c}</option>`).join('');
@@ -807,7 +833,12 @@ export async function saveVtSplits() {
       status: 'Pending',
     });
   }
-  batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: parentRef.id });
+  // Marking a debit as a voucher trade re-categorises it to 'Voucher Trades'
+  // (points are left as-is — the spend still earned them).
+  batch.update(doc(db, 'transactions', txnId), {
+    voucherTradeParentId: parentRef.id,
+    category: 'Voucher Trades',
+  });
   if (!await guardWrite(() => batch.commit(), 'Save voucher trade')) return;
 
   document.getElementById('vt-split-modal').classList.add('hidden');
@@ -980,7 +1011,15 @@ export async function saveTransaction() {
   closeTransactionModal();
 
   if (id && !hasActiveFilters()) {
-    await patchRowInPlace({ id, ...data });
+    // `data` (the updateDoc payload) deliberately omits the VT linkage fields —
+    // updateDoc leaves them untouched in Firestore — but the optimistic
+    // re-render needs them or the "VT pending / Haircut" chip vanishes on edit.
+    await patchRowInPlace({
+      id,
+      ...data,
+      voucherTradeParentId: editingOriginal?.voucherTradeParentId || null,
+      voucherTradeChildIds: editingOriginal?.voucherTradeChildIds || null,
+    });
   } else {
     loadTransactions(true);
   }

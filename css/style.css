@@ -278,6 +278,15 @@ body {
 .desc-chip-row .vt-chip { margin-left: 0; }
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
+
+/* Filtered-view totals footer */
+.txn-totals-row td { background: #fff3eb; border-top: 2px solid var(--terra); }
+.txn-totals-inner { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.txn-totals-count { font-size: 13px; font-weight: 700; color: var(--text-sec); }
+.txn-totals-figs  { display: flex; align-items: baseline; gap: 18px; }
+.txn-totals-pts   { font-size: 12px; font-weight: 700; color: var(--text-sec); }
+.txn-totals-amt   { font-size: 16px; font-weight: 800; color: var(--text); }
+.txn-totals-amt.credit { color: var(--sage); }
 .actions-cell { white-space: nowrap; text-align: right; }
 .txn-table th:nth-child(5) { text-align: right; }
 .txn-table th:last-child   { text-align: right; }
@@ -794,6 +803,10 @@ span.flatpickr-weekday {
     display: flex; gap: 2px;
   }
   .txn-table td:last-child .btn-icon { padding: 8px; font-size: 17px; opacity: 0.7; }
+
+  /* Totals footer: opt out of the grid card so it stays a full-width bar. */
+  .txn-table tr.txn-totals-row { display: block; padding: 12px 14px; }
+  .txn-table tr.txn-totals-row td { display: block; width: auto; padding: 0; }
 
   /* Mobile: thead is hidden, so per-column icons aren't reachable; show the
      mobile filter button instead. */

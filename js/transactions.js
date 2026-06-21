@@ -576,6 +576,33 @@ function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
   list.insertAdjacentHTML('beforeend', txns.map(t => rowHtml(t, vtChildMap)).join(''));
 }
 
+// Totals footer for the filtered view: net amount (debits − credits, so a
+// credit-heavy filter reads negative) + total points, with the debit/credit
+// split available on hover.
+function appendTotalsRow(txns) {
+  let debit = 0, credit = 0, points = 0;
+  txns.forEach(t => {
+    const amt = t.amount || 0;
+    if (t.type === 'credit') credit += amt; else debit += amt;
+    points += t.pointsEarned || 0;
+  });
+  const net = debit - credit;
+  const list = document.getElementById('transactions-list');
+  list.insertAdjacentHTML('beforeend', `
+    <tr class="txn-totals-row">
+      <td colspan="8">
+        <div class="txn-totals-inner">
+          <span class="txn-totals-count">${txns.length} transaction${txns.length === 1 ? '' : 's'}</span>
+          <span class="txn-totals-figs">
+            <span class="txn-totals-pts">${points.toLocaleString('en-IN')} pts</span>
+            <span class="txn-totals-amt ${net < 0 ? 'credit' : ''}" title="Debit ${formatCurrency(debit)} · Credit ${formatCurrency(credit)}">${formatCurrency(net)}</span>
+          </span>
+        </div>
+      </td>
+    </tr>
+  `);
+}
+
 // Optimistic-update helpers — keep the list rendered in place on edit/delete
 // instead of a full re-fetch + scroll reset. Adds with active filters still
 // trigger a full reload (the new row may not match), and same for edits that
@@ -1046,7 +1073,10 @@ export async function deleteTransaction(id) {
   if (!confirm('Delete this transaction?')) return;
   if (!await guardWrite(() => deleteDoc(doc(db, 'transactions', id)), 'Delete transaction')) return;
   showToast('Transaction deleted.', 'success');
-  removeRowFromDom(id);
+  // Under an active filter, reload so the totals footer recomputes; otherwise
+  // just drop the row in place.
+  if (hasActiveFilters()) loadFilteredTransactions();
+  else removeRowFromDom(id);
 }
 
 async function loadFilteredTransactions() {
@@ -1078,6 +1108,7 @@ async function loadFilteredTransactions() {
 
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, true, vtChildMap);
+    if (txns.length) appendTotalsRow(txns);
   } catch (e) {
     console.error('Filtered transactions load failed:', e);
     list.innerHTML = `<tr><td colspan="8" class="error">Couldn't load transactions: ${e.message}</td></tr>`;

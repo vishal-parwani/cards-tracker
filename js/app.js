@@ -36,6 +36,7 @@ window.restoreCard        = restoreCard;
 // Dashboard chart drill-down: set the transaction filters, then switch tabs
 // (switchTab → loadTransactions picks up the active filters).
 window.chartDrillDown = (filter) => {
+  window.closeFullscreenChart?.();
   setExternalFilter(filter);
   switchTab('transactions');
 };

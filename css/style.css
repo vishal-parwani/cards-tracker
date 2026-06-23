@@ -194,6 +194,39 @@ body {
 .chart-canvas-bar   { height: 280px; }
 .chart-canvas-donut { height: 240px; }
 
+/* Expand-to-fullscreen control (mobile only — shown via the media query). */
+.chart-expand-btn {
+  position: absolute; bottom: 4px; right: 4px;
+  width: 30px; height: 30px; padding: 0;
+  display: none; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text-sec); cursor: pointer;
+  box-shadow: 0 1px 4px rgba(92,61,46,0.12); z-index: 3;
+}
+.chart-expand-btn:active { background: var(--bg); }
+
+.chart-fs-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
+}
+.chart-fs-overlay.hidden { display: none; }
+.chart-fs-title {
+  font-size: 13px; font-weight: 800; color: var(--text-sec);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 4px 40px 8px 4px;
+}
+.chart-fs-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
+.chart-fs-close {
+  position: absolute; top: max(6px, env(safe-area-inset-top)); right: 10px;
+  width: 36px; height: 36px; padding: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 50%;
+  background: var(--card); color: var(--text); font-size: 22px; line-height: 1;
+  cursor: pointer; box-shadow: 0 1px 6px rgba(92,61,46,0.15);
+}
+
 /* ── Tracker Cards ── */
 .trackers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .tracker-card {
@@ -703,6 +736,7 @@ span.flatpickr-weekday {
   .four-col           { grid-template-columns: 1fr 1fr; }
   .chart-card         { padding: 14px; }
   .chart-canvas-donut { height: 220px; }
+  .chart-expand-btn   { display: flex; }
 
   /* ── Data tables → stacked cards ──
      thead is hidden; each <tr> becomes a card and each <td> a

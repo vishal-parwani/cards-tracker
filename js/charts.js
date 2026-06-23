@@ -13,15 +13,8 @@ const FALLBACK_COLORS = ['#6CB4EE','#9B8EA3','#CFBAF0','#B5D5C5','#8D99AE','#A8D
 const CAT_COLORS = {
   'Food & Dining':       '#E76F51',
   'Grocery':             '#8AB17D',
-  'Shopping - Online':   '#F4A261',
-  'Shopping - Apparel':  '#F9C784',
-  'Shopping - Electronics': '#6CB4EE',
-  'Shopping - Home':     '#A8DADC',
-  'Shopping - Jewellery':'#E9C46A',
-  'Shopping - Software': '#B5D5C5',
+  'Shopping':            '#F4A261',
   'Travel':              '#2A9D8F',
-  'Travel - Hotels':     '#43AA8B',
-  'Travel - Air':        '#90E0EF',
   'Entertainment':       '#CFBAF0',
   'Health & Medical':    '#9B8EA3',
   'Insurance':           '#8D99AE',
@@ -41,6 +34,12 @@ let monthlyChart = null;
 let catYtdChart  = null;
 let catMtdChart  = null;
 
+// Registry of the data + option-builder for each on-dashboard chart, so the
+// fullscreen overlay can rebuild an identical chart with a different legend
+// position. Keyed by the same id used in the expand button's onclick.
+const chartConfigs = {};
+let fsChart = null;
+
 function fmtK(v) {
   if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
   if (v >= 1000)   return '₹' + (v / 1000).toFixed(0) + 'K';
@@ -49,6 +48,16 @@ function fmtK(v) {
 
 function monthLabel(date) {
   return date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+}
+
+// Collapse the granular backend categories into the two broad buckets the user
+// wants to see on the charts: every "Shopping - *" → "Shopping", every
+// "Travel"/"Travel - *" → "Travel". Everything else passes through unchanged.
+function groupCategory(cat) {
+  if (!cat) return 'Miscellaneous';
+  if (cat === 'Shopping' || cat.startsWith('Shopping -')) return 'Shopping';
+  if (cat === 'Travel' || cat.startsWith('Travel -')) return 'Travel';
+  return cat;
 }
 
 // Local YYYY-MM-DD (not toISOString — that shifts to UTC and can roll the day).
@@ -93,20 +102,32 @@ export async function loadCharts() {
   const monthCardMap = {};  // {monthLabel: {card: amount}}
   const catYtd = {};
   const catMtd = {};
+  // grouped chart label → set of the real backend categories it covers, so a
+  // drill-down on "Shopping"/"Travel" filters transactions by every sub-category.
+  const catRealMap = {};
 
   txns.forEach(t => {
     const d   = t.date.toDate();
     const ml  = monthLabel(d);
     const amt = t.amount || 0;
     const card = t.card || 'Unknown';
-    const cat  = t.category || 'Miscellaneous';
+    const realCat = t.category || 'Miscellaneous';
+    const cat  = groupCategory(realCat);
 
     if (!monthCardMap[ml]) monthCardMap[ml] = {};
     monthCardMap[ml][card] = (monthCardMap[ml][card] || 0) + amt;
 
+    (catRealMap[cat] ||= new Set()).add(realCat);
     if (d >= ytdStart) catYtd[cat] = (catYtd[cat] || 0) + amt;
     if (d >= mtdStart) catMtd[cat] = (catMtd[cat] || 0) + amt;
   });
+
+  // Expand a (possibly grouped) chart label back to the real categories the
+  // transactions filter matches on.
+  function realCats(label) {
+    const s = catRealMap[label];
+    return s ? [...s] : [label];
+  }
 
   // ── Stacked bar ───────────────────────────────────────────────────
   const allCards = [...new Set(txns.map(t => t.card).filter(Boolean))];
@@ -117,37 +138,49 @@ export async function loadCharts() {
     backgroundColor: CARD_COLORS[card] || FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length],
   }));
 
+  function barOptions(legendPosition) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      onClick: (evt, els) => {
+        if (!els.length) return;
+        const el = els[0];
+        const card = barDatasets[el.datasetIndex].label;
+        const mStart = monthStarts[el.index];
+        const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0);
+        window.chartDrillDown?.({ card, dateFrom: ymd(mStart), dateTo: ymd(mEnd) });
+      },
+      plugins: {
+        legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${fmtK(ctx.raw)}`,
+            footer: items => 'Total: ' + fmtK(items.reduce((s, i) => s + i.raw, 0)),
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Nunito', size: 11 } } },
+        y: { stacked: true, ticks: { font: { family: 'Nunito', size: 11 }, callback: fmtK }, grid: { color: '#f0e8e0' } },
+      },
+    };
+  }
+
+  chartConfigs.monthly = {
+    type: 'bar',
+    data: { labels: months, datasets: barDatasets },
+    makeOptions: barOptions,
+    plugins: [],
+  };
+
   if (monthlyChart) monthlyChart.destroy();
   const barCtx = document.getElementById('chart-monthly');
   if (barCtx) {
     monthlyChart = new Chart(barCtx, {
-      type: 'bar',
-      data: { labels: months, datasets: barDatasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        onClick: (evt, els) => {
-          if (!els.length) return;
-          const el = els[0];
-          const card = barDatasets[el.datasetIndex].label;
-          const mStart = monthStarts[el.index];
-          const mEnd = new Date(mStart.getFullYear(), mStart.getMonth() + 1, 0);
-          window.chartDrillDown?.({ card, dateFrom: ymd(mStart), dateTo: ymd(mEnd) });
-        },
-        plugins: {
-          legend: { position: 'bottom', labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12 } },
-          tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.dataset.label}: ${fmtK(ctx.raw)}`,
-              footer: items => 'Total: ' + fmtK(items.reduce((s, i) => s + i.raw, 0)),
-            },
-          },
-        },
-        scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Nunito', size: 11 } } },
-          y: { stacked: true, ticks: { font: { family: 'Nunito', size: 11 }, callback: fmtK }, grid: { color: '#f0e8e0' } },
-        },
-      },
+      type: chartConfigs.monthly.type,
+      data: chartConfigs.monthly.data,
+      options: barOptions('bottom'),
+      plugins: chartConfigs.monthly.plugins,
     });
   }
 
@@ -204,28 +237,21 @@ export async function loadCharts() {
     };
   }
 
-  function makeDonut(canvasId, totalElId, existing, catMap, periodStart) {
+  function makeDonut(canvasId, configKey, totalElId, existing, catMap, periodStart) {
     const { labels, data, colors } = donutDatasets(catMap);
-    if (existing) existing.destroy();
-    const ctx = document.getElementById(canvasId);
-    if (!ctx) return null;
-    const chart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{ data, backgroundColor: colors, borderWidth: 1, borderColor: '#fff' }],
-      },
-      options: {
+
+    function donutOptions(legendPosition) {
+      return {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '62%',
         onClick: (evt, els) => {
           if (!els.length) return;
           const cat = labels[els[0].index];
-          window.chartDrillDown?.({ category: cat, dateFrom: ymd(periodStart), dateTo: ymd(now) });
+          window.chartDrillDown?.({ category: realCats(cat), dateFrom: ymd(periodStart), dateTo: ymd(now) });
         },
         plugins: {
-          legend: { position: 'right', labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12, padding: 8 } },
+          legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12, padding: 8 } },
           tooltip: {
             callbacks: {
               label: ctx => {
@@ -235,8 +261,24 @@ export async function loadCharts() {
             },
           },
         },
-      },
+      };
+    }
+
+    chartConfigs[configKey] = {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 1, borderColor: '#fff' }] },
+      makeOptions: donutOptions,
       plugins: [donutLabelPlugin(totalElId)],
+    };
+
+    if (existing) existing.destroy();
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    const chart = new Chart(ctx, {
+      type: chartConfigs[configKey].type,
+      data: chartConfigs[configKey].data,
+      options: donutOptions('right'),
+      plugins: chartConfigs[configKey].plugins,
     });
     // afterUpdate fires on creation too, but set the total explicitly in case.
     const el = totalElId && document.getElementById(totalElId);
@@ -244,6 +286,66 @@ export async function loadCharts() {
     return chart;
   }
 
-  catYtdChart = makeDonut('chart-cat-ytd', 'chart-cat-ytd-total', catYtdChart, catYtd, ytdStart);
-  catMtdChart = makeDonut('chart-cat-mtd', 'chart-cat-mtd-total', catMtdChart, catMtd, mtdStart);
+  catYtdChart = makeDonut('chart-cat-ytd', 'catYtd', 'chart-cat-ytd-total', catYtdChart, catYtd, ytdStart);
+  catMtdChart = makeDonut('chart-cat-mtd', 'catMtd', 'chart-cat-mtd-total', catMtdChart, catMtd, mtdStart);
 }
+
+// ── Fullscreen expand ────────────────────────────────────────────────
+// Portrait → legend at the bottom; landscape → legend on the right.
+function fsLegendPos() {
+  return window.innerWidth > window.innerHeight ? 'right' : 'bottom';
+}
+
+function ensureOverlay() {
+  let overlay = document.getElementById('chart-fs-overlay');
+  if (overlay) return overlay;
+  overlay = document.createElement('div');
+  overlay.id = 'chart-fs-overlay';
+  overlay.className = 'chart-fs-overlay hidden';
+  overlay.innerHTML = `
+    <button class="chart-fs-close" aria-label="Close">&times;</button>
+    <div class="chart-fs-title"></div>
+    <div class="chart-fs-canvas-wrap"><canvas id="chart-fs-canvas"></canvas></div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('.chart-fs-close').addEventListener('click', closeFullscreenChart);
+  return overlay;
+}
+
+function onFsResize() {
+  if (!fsChart) return;
+  fsChart.options.plugins.legend.position = fsLegendPos();
+  fsChart.resize();
+  fsChart.update();
+}
+
+function expandChart(key, title) {
+  const cfg = chartConfigs[key];
+  if (!cfg || typeof Chart === 'undefined') return;
+  const overlay = ensureOverlay();
+  overlay.querySelector('.chart-fs-title').textContent = title || '';
+  overlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  if (fsChart) { fsChart.destroy(); fsChart = null; }
+  const canvas = document.getElementById('chart-fs-canvas');
+  fsChart = new Chart(canvas, {
+    type: cfg.type,
+    data: structuredClone(cfg.data),
+    options: cfg.makeOptions(fsLegendPos()),
+    plugins: cfg.plugins,
+  });
+  window.addEventListener('resize', onFsResize);
+  window.addEventListener('orientationchange', onFsResize);
+}
+
+function closeFullscreenChart() {
+  const overlay = document.getElementById('chart-fs-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  document.body.style.overflow = '';
+  window.removeEventListener('resize', onFsResize);
+  window.removeEventListener('orientationchange', onFsResize);
+  if (fsChart) { fsChart.destroy(); fsChart = null; }
+}
+
+window.expandChart = expandChart;
+window.closeFullscreenChart = closeFullscreenChart;

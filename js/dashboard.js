@@ -4,6 +4,15 @@ import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentM
 import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP, HSBC_TWP_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
 
+// Mobile-only expand control rendered at a chart canvas's bottom-right; opens
+// the chart fullscreen (CSS hides it above 600px).
+function expandBtn(key, title) {
+  return `<button class="chart-expand-btn" type="button" aria-label="Expand chart"
+    onclick="window.expandChart('${key}', '${title.replace(/'/g, "\\'")}')">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+  </button>`;
+}
+
 export async function loadDashboard() {
   const container = document.getElementById('dashboard-content');
   container.innerHTML = '<p class="loading">Loading...</p>';
@@ -61,6 +70,7 @@ export async function loadDashboard() {
           <div class="chart-title">Monthly Spend by Card</div>
           <div class="chart-canvas-wrap chart-canvas-bar">
             <canvas id="chart-monthly"></canvas>
+            ${expandBtn('monthly', 'Monthly Spend by Card')}
           </div>
         </div>
         <div class="charts-grid-donuts">
@@ -71,6 +81,7 @@ export async function loadDashboard() {
             </div>
             <div class="chart-canvas-wrap chart-canvas-donut">
               <canvas id="chart-cat-ytd"></canvas>
+              ${expandBtn('catYtd', 'Spend by Category — YTD')}
             </div>
           </div>
           <div class="chart-card">
@@ -80,6 +91,7 @@ export async function loadDashboard() {
             </div>
             <div class="chart-canvas-wrap chart-canvas-donut">
               <canvas id="chart-cat-mtd"></canvas>
+              ${expandBtn('catMtd', 'Spend by Category — MTD')}
             </div>
           </div>
         </div>

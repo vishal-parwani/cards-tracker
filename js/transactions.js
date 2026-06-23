@@ -340,7 +340,7 @@ export function setExternalFilter({ category, card, dateFrom, dateTo } = {}) {
     date: { from: dateFrom || '', to: dateTo || '' },
     card: card ? [card] : [],
     description: '',
-    category: category ? [category] : [],
+    category: Array.isArray(category) ? category : (category ? [category] : []),
     amount: { min: '', max: '' },
     tag: [],
     source: [],

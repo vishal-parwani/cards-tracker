@@ -138,7 +138,9 @@ export async function loadCharts() {
     backgroundColor: CARD_COLORS[card] || FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length],
   }));
 
-  function barOptions(legendPosition) {
+  function barOptions(legendPosition, fs) {
+    const lf = fs ? 16 : 11;   // legend font
+    const tf = fs ? 14 : 11;   // tick font
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -151,8 +153,9 @@ export async function loadCharts() {
         window.chartDrillDown?.({ card, dateFrom: ymd(mStart), dateTo: ymd(mEnd) });
       },
       plugins: {
-        legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12 } },
+        legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: lf }, boxWidth: fs ? 20 : 12, padding: fs ? 16 : 10 } },
         tooltip: {
+          bodyFont: { size: fs ? 15 : 12 }, titleFont: { size: fs ? 15 : 12 }, footerFont: { size: fs ? 14 : 11 },
           callbacks: {
             label: ctx => ` ${ctx.dataset.label}: ${fmtK(ctx.raw)}`,
             footer: items => 'Total: ' + fmtK(items.reduce((s, i) => s + i.raw, 0)),
@@ -160,8 +163,8 @@ export async function loadCharts() {
         },
       },
       scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Nunito', size: 11 } } },
-        y: { stacked: true, ticks: { font: { family: 'Nunito', size: 11 }, callback: fmtK }, grid: { color: '#f0e8e0' } },
+        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Nunito', size: tf } } },
+        y: { stacked: true, ticks: { font: { family: 'Nunito', size: tf }, callback: fmtK }, grid: { color: '#f0e8e0' } },
       },
     };
   }
@@ -215,18 +218,24 @@ export async function loadCharts() {
           const r = (arc.innerRadius + arc.outerRadius) / 2;
           const x = arc.x + Math.cos(ang) * r;
           const y = arc.y + Math.sin(ang) * r;
+          // Scale the label to the ring thickness so the fullscreen donut gets
+          // proportionally larger text than the small dashboard one.
+          const fMain = Math.max(11, Math.min(22, arc.outerRadius * 0.14));
+          const fSub  = fMain * 0.82;
           ctx.save();
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-          ctx.fillStyle = '#fff';
-          ctx.font = '800 11px Nunito, sans-serif';
-          ctx.strokeText(`${pct.toFixed(0)}%`, x, y - 6);
-          ctx.fillText(`${pct.toFixed(0)}%`, x, y - 6);
-          ctx.font = '700 10px Nunito, sans-serif';
-          ctx.strokeText(fmtK(v), x, y + 6);
-          ctx.fillText(fmtK(v), x, y + 6);
+          // Dark ink + white halo reads on the light/pastel slice palette far
+          // better than the old white-on-light.
+          ctx.lineWidth = Math.max(3, fMain * 0.4);
+          ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+          ctx.fillStyle = '#23201d';
+          ctx.font = `800 ${fMain}px Nunito, sans-serif`;
+          ctx.strokeText(`${pct.toFixed(0)}%`, x, y - fMain * 0.55);
+          ctx.fillText(`${pct.toFixed(0)}%`, x, y - fMain * 0.55);
+          ctx.font = `700 ${fSub}px Nunito, sans-serif`;
+          ctx.strokeText(fmtK(v), x, y + fSub * 0.7);
+          ctx.fillText(fmtK(v), x, y + fSub * 0.7);
           ctx.restore();
         });
       },
@@ -240,7 +249,7 @@ export async function loadCharts() {
   function makeDonut(canvasId, configKey, totalElId, existing, catMap, periodStart) {
     const { labels, data, colors } = donutDatasets(catMap);
 
-    function donutOptions(legendPosition) {
+    function donutOptions(legendPosition, fs) {
       return {
         responsive: true,
         maintainAspectRatio: false,
@@ -251,8 +260,9 @@ export async function loadCharts() {
           window.chartDrillDown?.({ category: realCats(cat), dateFrom: ymd(periodStart), dateTo: ymd(now) });
         },
         plugins: {
-          legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: 11 }, boxWidth: 12, padding: 8 } },
+          legend: { position: legendPosition, labels: { font: { family: 'Nunito', size: fs ? 16 : 11 }, boxWidth: fs ? 20 : 12, padding: fs ? 16 : 8 } },
           tooltip: {
+            bodyFont: { size: fs ? 15 : 12 }, titleFont: { size: fs ? 15 : 12 },
             callbacks: {
               label: ctx => {
                 const total = visibleTotal(ctx.chart) || 1;
@@ -331,7 +341,7 @@ function expandChart(key, title) {
   fsChart = new Chart(canvas, {
     type: cfg.type,
     data: structuredClone(cfg.data),
-    options: cfg.makeOptions(fsLegendPos()),
+    options: cfg.makeOptions(fsLegendPos(), true),
     plugins: cfg.plugins,
   });
   window.addEventListener('resize', onFsResize);

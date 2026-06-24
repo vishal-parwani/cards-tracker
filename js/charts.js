@@ -240,8 +240,15 @@ export async function loadCharts() {
         });
       },
       afterUpdate(chart) {
+        const txt = '₹' + Math.round(visibleTotal(chart)).toLocaleString('en-IN');
         const el = totalElId && document.getElementById(totalElId);
-        if (el) el.textContent = '₹' + Math.round(visibleTotal(chart)).toLocaleString('en-IN');
+        if (el) el.textContent = txt;
+        // The fullscreen chart lives on its own canvas; mirror the total into
+        // the overlay header (the dashboard's total element isn't visible there).
+        if (chart.canvas && chart.canvas.id === 'chart-fs-canvas') {
+          const fe = document.getElementById('chart-fs-total');
+          if (fe) fe.textContent = txt;
+        }
       },
     };
   }
@@ -314,7 +321,10 @@ function ensureOverlay() {
   overlay.className = 'chart-fs-overlay hidden';
   overlay.innerHTML = `
     <button class="chart-fs-close" aria-label="Close">&times;</button>
-    <div class="chart-fs-title"></div>
+    <div class="chart-fs-head">
+      <div class="chart-fs-title"></div>
+      <div class="chart-fs-total" id="chart-fs-total"></div>
+    </div>
     <div class="chart-fs-canvas-wrap"><canvas id="chart-fs-canvas"></canvas></div>
   `;
   document.body.appendChild(overlay);
@@ -334,6 +344,7 @@ function expandChart(key, title) {
   if (!cfg || typeof Chart === 'undefined') return;
   const overlay = ensureOverlay();
   overlay.querySelector('.chart-fs-title').textContent = title || '';
+  overlay.querySelector('.chart-fs-total').textContent = '';
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
   if (fsChart) { fsChart.destroy(); fsChart = null; }

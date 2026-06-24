@@ -212,11 +212,15 @@ body {
   padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
 }
 .chart-fs-overlay.hidden { display: none; }
+.chart-fs-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 4px 44px 8px 4px;
+}
 .chart-fs-title {
   font-size: 13px; font-weight: 800; color: var(--text-sec);
   text-transform: uppercase; letter-spacing: 0.04em;
-  padding: 4px 40px 8px 4px;
 }
+.chart-fs-total { font-size: 17px; font-weight: 800; color: var(--terra); white-space: nowrap; }
 .chart-fs-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
 .chart-fs-close {
   position: absolute; top: max(6px, env(safe-area-inset-top)); right: 10px;

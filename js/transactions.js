@@ -882,9 +882,24 @@ export async function saveVtSplits() {
   if (!await guardWrite(() => batch.commit(), 'Save voucher trade')) return;
 
   document.getElementById('vt-split-modal').classList.add('hidden');
+  // Keep the txn modal (if still open on this txn) consistent — now a linked VT.
+  if (document.getElementById('txn-id').value === txnId) {
+    document.getElementById('txn-category').value = 'Voucher Trades';
+    if (editingOriginal) { editingOriginal.voucherTradeParentId = parentRef.id; editingOriginal.category = 'Voucher Trades'; }
+  }
   // Refresh the txn modal's VT section so it shows the new linkage.
   renderVtSection({ id: txnId, ...t, voucherTradeParentId: parentRef.id });
   loadTransactions(true);
+}
+
+// Append a debit's voucher-trade deletes (parent + all splits) plus the txn's
+// own update to an open batch. Callers reset the category off 'Voucher Trades'
+// via txnUpdate so the label never outlives the trade (2A: category is master).
+async function purgeVtForTxn(batch, txnId, parentId, txnUpdate = {}) {
+  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', parentId)));
+  batch.delete(doc(db, 'voucherTrades', parentId));
+  childSnap.docs.forEach(c => batch.delete(c.ref));
+  batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: null, ...txnUpdate });
 }
 
 export async function unlinkVtFromTxn(txnId) {
@@ -894,13 +909,15 @@ export async function unlinkVtFromTxn(txnId) {
   const parentId = txnSnap.data().voucherTradeParentId;
   if (!parentId) return;
 
-  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', parentId)));
   const batch = writeBatch(db);
-  batch.delete(doc(db, 'voucherTrades', parentId));
-  childSnap.docs.forEach(c => batch.delete(c.ref));
-  batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: null });
+  await purgeVtForTxn(batch, txnId, parentId, { category: 'Miscellaneous' });
   if (!await guardWrite(() => batch.commit(), 'Unlink voucher trade')) return;
-  renderVtSection({ id: txnId, ...txnSnap.data(), voucherTradeParentId: null });
+  // Keep the (open) txn modal in sync — it's no longer a voucher trade.
+  if (document.getElementById('txn-id').value === txnId) {
+    document.getElementById('txn-category').value = 'Miscellaneous';
+    if (editingOriginal) { editingOriginal.voucherTradeParentId = null; editingOriginal.category = 'Miscellaneous'; }
+  }
+  renderVtSection({ id: txnId, ...txnSnap.data(), voucherTradeParentId: null, category: 'Miscellaneous' });
   loadTransactions(true);
 }
 
@@ -1039,25 +1056,56 @@ export async function saveTransaction() {
     source: (id && editingOriginal?.source) ? editingOriginal.source : 'manual'
   };
 
-  const ok = await guardWrite(
-    () => id
-      ? updateDoc(doc(db, 'transactions', id), data)
-      : addDoc(collection(db, 'transactions'), data),
-    id ? 'Update transaction' : 'Add transaction'
-  );
+  const wasLinked = !!editingOriginal?.voucherTradeParentId;
+  const catIsVt = data.category === 'Voucher Trades';
+
+  // 2A: 'Voucher Trades' is the master switch. Moving a linked debit off that
+  // category offers to delete the trade; declining snaps the category back so
+  // the label and the trade never disagree.
+  let purgeVt = false;
+  if (id && wasLinked && !catIsVt) {
+    if (confirm('This transaction is a linked voucher trade. Removing the "Voucher Trades" category deletes the trade and its splits. Delete the trade?')) {
+      purgeVt = true;
+    } else {
+      data.category = 'Voucher Trades';
+      document.getElementById('txn-category').value = 'Voucher Trades';
+    }
+  }
+
+  let savedId = id;
+  let ok;
+  if (purgeVt) {
+    const batch = writeBatch(db);
+    await purgeVtForTxn(batch, id, editingOriginal.voucherTradeParentId, data);
+    ok = await guardWrite(() => batch.commit(), 'Update transaction');
+  } else if (id) {
+    ok = await guardWrite(() => updateDoc(doc(db, 'transactions', id), data), 'Update transaction');
+  } else {
+    let ref;
+    ok = await guardWrite(async () => { ref = await addDoc(collection(db, 'transactions'), data); }, 'Add transaction');
+    if (ok) savedId = ref.id;
+  }
   if (!ok) return;
 
   showToast(id ? 'Transaction updated.' : 'Transaction added.', 'success');
   closeTransactionModal();
 
+  // 1B: newly marked 'Voucher Trades' (a debit not already a trade) → open the
+  // split editor so the user defines the splits that make it a real trade.
+  if (data.type === 'debit' && catIsVt && !wasLinked) {
+    if (hasActiveFilters()) loadFilteredTransactions(); else loadTransactions(true);
+    openConvertToVtModal(savedId);
+    return;
+  }
+
   if (id && !hasActiveFilters()) {
-    // `data` (the updateDoc payload) deliberately omits the VT linkage fields —
-    // updateDoc leaves them untouched in Firestore — but the optimistic
-    // re-render needs them or the "VT pending / Haircut" chip vanishes on edit.
+    // `data` (the updateDoc payload) omits the VT linkage fields — Firestore
+    // leaves them untouched, or purgeVt cleared the link — but the optimistic
+    // re-render needs them or the "VT pending / Haircut" chip goes stale.
     await patchRowInPlace({
       id,
       ...data,
-      voucherTradeParentId: editingOriginal?.voucherTradeParentId || null,
+      voucherTradeParentId: purgeVt ? null : (editingOriginal?.voucherTradeParentId || null),
       voucherTradeChildIds: editingOriginal?.voucherTradeChildIds || null,
     });
   } else {

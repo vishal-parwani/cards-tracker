@@ -214,6 +214,16 @@
             <select id="txn-tag"></select>
           </div>
         </div>
+        <!-- Shown only for HSBC Premier + TWP tag (see syncTwpRateVisibility) -->
+        <div class="form-row hidden" id="txn-twp-rate-row">
+          <label>TWP Rate</label>
+          <select id="txn-twp-rate">
+            <option value="">Auto (from description)</option>
+            <option value="18">Flight — 18/₹100 (6×)</option>
+            <option value="36">Hotel — 36/₹100 (12×)</option>
+            <option value="6">Car — 6/₹100 (2×)</option>
+          </select>
+        </div>
         <input type="hidden" id="txn-statement-period">
         <div class="form-row reimbursable-row">
           <label class="toggle-wrap">

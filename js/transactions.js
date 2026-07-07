@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, setDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
 import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
@@ -89,6 +89,7 @@ function autoComputePoints() {
   const type     = document.getElementById('txn-type').value;
   const tag      = document.getElementById('txn-tag').value;
   const description = document.getElementById('txn-description').value;
+  const twpRate  = parseInt(document.getElementById('txn-twp-rate').value) || 0;
 
   // Magnus Burgundy edit-preserve: the backend prorates points across AEP
   // bands (Band 2 = 35/200, vs base 12/200); the UI can't replicate that
@@ -112,7 +113,17 @@ function autoComputePoints() {
   }
 
   document.getElementById('txn-points').value =
-    computePointsForTag(card, amount, category, type, tag, description);
+    computePointsForTag(card, amount, category, type, tag, description, twpRate);
+}
+
+// The TWP rate selector only makes sense for a manually-tagged HSBC TWP txn
+// whose description doesn't carry the FLIGHT/HOTEL/CAR keyword. Show it only
+// then; hide (its value is ignored by computePointsForTag for other cards).
+function syncTwpRateVisibility() {
+  const card = document.getElementById('txn-card').value;
+  const tag  = document.getElementById('txn-tag').value;
+  const show = card === 'HSBC Premier' && tag === 'TWP';
+  document.getElementById('txn-twp-rate-row').classList.toggle('hidden', !show);
 }
 
 // Auto-set the tag from card+description unless the user has touched it.
@@ -438,10 +449,12 @@ function ensureStmtListeners() {
   // Card or description change → re-derive tag, then re-compute points.
   document.getElementById('txn-card').addEventListener('change', () => {
     autoSetTagFromDesc();
+    syncTwpRateVisibility();
     autoComputePoints();
   });
   document.getElementById('txn-description').addEventListener('input', () => {
     autoSetTagFromDesc();
+    syncTwpRateVisibility();
     autoComputePoints();
   });
   document.getElementById('txn-amount').addEventListener('input', autoComputePoints);
@@ -449,8 +462,10 @@ function ensureStmtListeners() {
   document.getElementById('txn-type').addEventListener('change', autoComputePoints);
   document.getElementById('txn-tag').addEventListener('change', () => {
     tagManuallyEdited = true;
+    syncTwpRateVisibility();
     autoComputePoints();
   });
+  document.getElementById('txn-twp-rate').addEventListener('change', autoComputePoints);
   document.getElementById('txn-points').addEventListener('input', () => { pointsManuallyEdited = true; });
   stmtListenersAttached = true;
 }
@@ -672,11 +687,13 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-type').value = txn?.type || 'debit';
   document.getElementById('txn-points').value = txn?.pointsEarned || 0;
   document.getElementById('txn-tag').value = txn?.transactionTag || '';
+  document.getElementById('txn-twp-rate').value = txn?.twpRate ? String(txn.twpRate) : '';
   document.getElementById('txn-reimbursable').checked = txn?.reimbursable || false;
   document.getElementById('txn-notes').value = txn?.notes || '';
 
   pointsManuallyEdited = false;
   tagManuallyEdited = false;
+  syncTwpRateVisibility();
   ensureStmtListeners();
   updateStatementPeriod();
 
@@ -1055,6 +1072,16 @@ export async function saveTransaction() {
     month: getMonthStr(new Date(dateStr)),
     source: (id && editingOriginal?.source) ? editingOriginal.source : 'manual'
   };
+
+  // HSBC TWP rate override: persist the chosen rate only for a TWP-tagged txn;
+  // otherwise clear any stale override on edit so the dashboard tracker and the
+  // points guide fall back to the description-derived rate.
+  const twpSel = document.getElementById('txn-twp-rate').value;
+  if (data.transactionTag === 'TWP' && twpSel) {
+    data.twpRate = parseInt(twpSel);
+  } else if (id) {
+    data.twpRate = deleteField();
+  }
 
   const wasLinked = !!editingOriginal?.voucherTradeParentId;
   const catIsVt = data.category === 'Voucher Trades';

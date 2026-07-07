@@ -239,8 +239,8 @@ async function loadCardData(card, monthStart) {
   if (card.dashboardWidget === 'hsbcTwp') {
     mtdTxns.forEach(t => {
       if (t.type !== 'debit' || t.transactionTag !== 'TWP') return;
-      const rate = hsbcTwpRate((t.description || '').toUpperCase());
-      if (rate === null) return;
+      const rate = t.twpRate || hsbcTwpRate((t.description || '').toUpperCase());
+      if (!rate) return;
       hsbcTwpSpend += t.amount || 0;
       hsbcTwpPts += Math.floor((t.amount || 0) / 100) * (rate - 3);
     });

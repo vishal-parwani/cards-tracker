@@ -116,7 +116,7 @@ export function deriveTag(card, description) {
 
 // Compute points keyed off tag (uncapped — processor enforces monthly caps
 // at write time; the UI shows the un-capped value as a guide).
-export function computePointsForTag(card, amount, category, type, tag, description = '') {
+export function computePointsForTag(card, amount, category, type, tag, description = '', twpRate = 0) {
   if (type === 'credit') return 0;
   if (card === 'Magnus Burgundy') {
     // Backend zeros base points whenever the category is AEP-excluded.
@@ -140,11 +140,14 @@ export function computePointsForTag(card, amount, category, type, tag, descripti
     return Math.floor(amount / 100) * 12;  // 6x
   }
   if (card === 'HSBC Premier') {
-    // TWP portal: Flight 18, Hotel 36, Car 6 per ₹100 (description-driven,
-    // matching the backend). Capped cats earn base 3/100 here (un-capped
-    // guide; backend enforces the ₹1L/mo spend cap). Fuel/Fees already 0 above.
-    const twp = hsbcTwpRate((description || '').toUpperCase());
-    if (twp !== null) return Math.floor(amount / 100) * twp;
+    // TWP portal: Flight 18, Hotel 36, Car 6 per ₹100. The rate is normally
+    // description-driven (matching the backend), but a manually-tagged TWP txn
+    // whose description lacks the FLIGHT/HOTEL/CAR keyword carries an explicit
+    // `twpRate` override (chosen in the modal). Override wins when present.
+    // Capped cats earn base 3/100 here (un-capped guide; backend enforces the
+    // ₹1L/mo spend cap). Fuel/Fees already 0 above.
+    const twp = twpRate || hsbcTwpRate((description || '').toUpperCase());
+    if (twp) return Math.floor(amount / 100) * twp;
   }
   const r = CARD_POINTS_RATES[card];
   return r ? Math.floor(amount / r.per) * r.rate : 0;

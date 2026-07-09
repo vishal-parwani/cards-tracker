@@ -1,14 +1,29 @@
 // Service worker — app-shell cache for the cards-tracker PWA.
 //
-// Strategy: network-first for same-origin GETs, cache only as the offline
-// fallback. While online you always get fresh files — no staleness footgun.
-// Cross-origin requests (Firebase, Firestore, the Chart.js CDN) are never
-// intercepted, so data is always live and never cached here.
+// Strategy:
+//   - Same-origin GETs: stale-while-revalidate — serve the cached shell
+//     instantly, refresh it from the network in the background. The app
+//     paints immediately on launch instead of waiting a network round-trip
+//     for all ~20 shell files. A deploy still lands within one launch: the
+//     updated sw.js installs in the background, the CACHE_VERSION bump
+//     purges the old cache, and the next launch precaches the new shell.
+//   - Version-pinned CDN modules (Firebase ESM at www.gstatic.com/firebasejs/,
+//     Chart.js at cdn.jsdelivr.net): cache-first in a separate persistent
+//     cache — the URLs carry the version, so the content is immutable and
+//     re-downloading ~700KB of vendor JS every launch was pure waste.
+//   - All other cross-origin requests (Firestore data, auth) are never
+//     intercepted, so data stays live.
 //
 // Bump CACHE_VERSION on any deploy that changes a shell file below; the
-// activate handler purges every cache that isn't the current version.
+// activate handler purges every cache that isn't the current version
+// (the CDN cache is exempt — immutable URLs never go stale).
 
-const CACHE_VERSION = 'cards-v26';
+const CACHE_VERSION = 'cards-v27';
+const CDN_CACHE = 'cards-cdn-v1';
+const CDN_PREFIXES = [
+  'https://www.gstatic.com/firebasejs/',
+  'https://cdn.jsdelivr.net/npm/chart.js@',
+];
 
 const SHELL = [
   '/',
@@ -47,7 +62,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
-        keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
+        keys.filter((k) => k !== CACHE_VERSION && k !== CDN_CACHE).map((k) => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );

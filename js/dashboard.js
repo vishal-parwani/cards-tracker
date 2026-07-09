@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, doc, getDoc, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, getDocs, getDocsFromCache, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
 import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP, HSBC_TWP_CAP } from './points-config.js';
@@ -13,12 +13,21 @@ function expandBtn(key, title) {
   </button>`;
 }
 
+// Monotonic sequence guarding against out-of-order renders: if the user
+// toggles away and back mid-load, only the latest invocation may write the
+// panel — a slow earlier fetch can no longer clobber (or lose to) a newer one.
+let loadSeq = 0;
+
 export async function loadDashboard() {
+  const seq = ++loadSeq;
   const container = document.getElementById('dashboard-content');
   container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
-    const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+    const [cardsSnap, mbAepSnap] = await Promise.all([
+      getDoc(doc(db, 'config', 'cards')),
+      getDoc(doc(db, 'config', 'mbAep')),
+    ]);
     const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
     const cards = Object.entries(cardsData)
       .filter(([, val]) => typeof val === 'number' || (!val.deleted && val.active !== false))
@@ -32,19 +41,55 @@ export async function loadDashboard() {
         showInTrackers: typeof val === 'number' ? true : (val.showInTrackers !== false),
         autoAdjustCredits: typeof val === 'number' ? true : (val.autoAdjustCredits !== false),
       }));
-
-    const mbAepSnap = await getDoc(doc(db, 'config', 'mbAep'));
     const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
 
-    const monthStart = getCurrentMonthStart();
-    const [cardResults, vtSummary] = await Promise.all([
-      Promise.all(cards.map(c => loadCardData(c, monthStart))),
-      loadVtSummary(monthStart),
-    ]);
-    const sortedCards = [...cardResults].sort((a, b) =>
-      (b.totalOutstanding - a.totalOutstanding) || a.name.localeCompare(b.name));
+    // ONE transactions fetch for the whole dashboard. Everything downstream —
+    // per-card balances, tracker widgets, VT summary, charts — computes from
+    // this single snapshot (previously 3 Firestore queries per card, one of
+    // them unbounded, plus a second big scan inside loadCharts).
+    const txnQ = query(collection(db, 'transactions'));
+    const vtQ  = query(collection(db, 'voucherTrades'));
 
-    container.innerHTML = `
+    const render = (txnSnap, vtSnap) => {
+      if (seq !== loadSeq) return;
+      const txns = txnSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const vts  = vtSnap.docs.map(d => d.data());
+      renderDashboard(container, cards, mbAep, txns, vts);
+    };
+
+    // Cache-first paint: render instantly from the local Firestore cache when
+    // it has data (persistent cache — see config.js), then refresh from the
+    // server. First-ever load has no cache and just waits for the server.
+    try {
+      const [ct, cv] = await Promise.all([getDocsFromCache(txnQ), getDocsFromCache(vtQ)]);
+      if (!ct.empty) render(ct, cv);
+    } catch (_) { /* cache empty — fall through to server */ }
+
+    const [st, sv] = await Promise.all([getDocs(txnQ), getDocs(vtQ)]);
+    render(st, sv);
+  } catch (e) {
+    if (seq === loadSeq) {
+      container.innerHTML = `<p class="error">Error loading dashboard: ${e.message}</p>`;
+    }
+  }
+}
+
+function renderDashboard(container, cards, mbAep, txns, vts) {
+  const monthStart = getCurrentMonthStart();
+
+  const byCard = new Map();
+  txns.forEach(t => {
+    if (!t.card) return;
+    if (!byCard.has(t.card)) byCard.set(t.card, []);
+    byCard.get(t.card).push(t);
+  });
+
+  const cardResults = cards.map(c => computeCardData(c, byCard.get(c.name) || [], monthStart));
+  const vtSummary   = computeVtSummary(vts, monthStart);
+  const sortedCards = [...cardResults].sort((a, b) =>
+    (b.totalOutstanding - a.totalOutstanding) || a.name.localeCompare(b.name));
+
+  container.innerHTML = `
       <section class="section">
         <h2 class="section-title">Card Balances</h2>
         <div class="cards-grid">
@@ -97,47 +142,27 @@ export async function loadDashboard() {
         </div>
       </section>
     `;
-    loadCharts();
-  } catch (e) {
-    container.innerHTML = `<p class="error">Error loading dashboard: ${e.message}</p>`;
-  }
+  loadCharts(txns);
 }
 
-async function loadCardData(card, monthStart) {
+// Pure computation over the dashboard's single pre-fetched snapshot — no
+// Firestore reads in here (this used to fire 3 queries per card).
+function computeCardData(card, cardTxns, monthStart) {
   const autoAdjustCredits = card.autoAdjustCredits !== false;
   const stmtStart = getStatementStartDate(card.cutoffDay);
-  // Upper bound the statement query so next-cycle / future-dated txns don't
+  // Upper bound the statement window so next-cycle / future-dated txns don't
   // leak in. End is the last day of the current billing cycle, inclusive.
   const stmtEnd = new Date(getStatementEndDate(card.cutoffDay));
   stmtEnd.setHours(23, 59, 59, 999);
-  const stmtStartTs = Timestamp.fromDate(stmtStart);
-  const stmtEndTs   = Timestamp.fromDate(stmtEnd);
-  const monthStartTs = Timestamp.fromDate(monthStart);
 
-  const [stmtSnap, mtdSnap, allTimeSnap] = await Promise.all([
-    getDocs(query(
-      collection(db, 'transactions'),
-      where('card', '==', card.name),
-      where('date', '>=', stmtStartTs),
-      where('date', '<=', stmtEndTs)
-    )),
-    getDocs(query(
-      collection(db, 'transactions'),
-      where('card', '==', card.name),
-      where('date', '>=', monthStartTs)
-    )),
-    getDocs(query(
-      collection(db, 'transactions'),
-      where('card', '==', card.name)
-    ))
-  ]);
+  const txnDate = t => (t.date && t.date.toDate) ? t.date.toDate()
+                     : (t.date ? new Date(t.date) : null);
 
   // totalOutstanding = all-time net (total debits minus total credits/payments ever
   // recorded). The true current balance on the card, accounting for carry-forward
   // from partially-paid prior cycles.
   let totalOutstanding = 0;
-  allTimeSnap.forEach(d => {
-    const t = d.data();
+  cardTxns.forEach(t => {
     const amt = t.amount || 0;
     if (t.type === 'debit') totalOutstanding += amt;
     else totalOutstanding -= amt;
@@ -150,8 +175,9 @@ async function loadCardData(card, monthStart) {
   // correctly lowers the upcoming bill instead of vanishing. With it OFF, all
   // current-cycle credits net straight into Next Statement.
   let cycleDebits = 0, cycleCredits = 0;
-  stmtSnap.forEach(d => {
-    const t = d.data();
+  cardTxns.forEach(t => {
+    const d = txnDate(t);
+    if (!d || d < stmtStart || d > stmtEnd) return;
     if (t.type === 'debit') cycleDebits += (t.amount || 0);
     else cycleCredits += (t.amount || 0);
   });
@@ -177,10 +203,11 @@ async function loadCardData(card, monthStart) {
 
   let mtdSpend = 0;
   let mtdTxns = [];
-  mtdSnap.forEach(d => {
-    const t = d.data();
+  cardTxns.forEach(t => {
+    const d = txnDate(t);
+    if (!d || d < monthStart) return;
     if (t.type === 'debit') mtdSpend += (t.amount || 0);
-    mtdTxns.push({ id: d.id, ...t });
+    mtdTxns.push(t);
   });
 
   // For Magnus AEP — compute by tag/category
@@ -324,18 +351,16 @@ function renderTimesBlackIshop(cardResults) {
   `;
 }
 
-async function loadVtSummary(monthStart) {
-  // Fetch all voucher trades; filter in JS. Personal-scale volume — fine.
+function computeVtSummary(vts, monthStart) {
+  // Filter the dashboard's pre-fetched voucherTrades in JS.
   // Skip parent docs (they aggregate children); count children + legacy.
   // Scopes per spec:
   //   gross   = sum purchaseAmount where purchaseDate is in current month (any status)
   //   net     = sum cashReceived  where status='Traded' AND tradeDate is in current month
   //   haircut = sum (purchaseAmount - cashReceived) over the same set as `net`
   //   pending = sum purchaseAmount where status='Pending' (all time, current exposure)
-  const snap = await getDocs(collection(db, 'voucherTrades'));
   let gross = 0, haircut = 0, net = 0, pending = 0;
-  snap.forEach(d => {
-    const v = d.data();
+  vts.forEach(v => {
     if (v.isParent) return;
     const purchaseAmount = v.purchaseAmount || 0;
     const pd = v.purchaseDate?.toDate ? v.purchaseDate.toDate() : null;

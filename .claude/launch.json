@@ -3,9 +3,13 @@
   "configurations": [
     {
       "name": "cards-tracker",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "3456"],
-      "port": 3456
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "python3 -m http.server ${PORT:-3457}"
+      ],
+      "port": 3457,
+      "autoPort": true
     }
   ]
 }

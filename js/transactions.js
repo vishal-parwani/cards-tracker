@@ -27,6 +27,24 @@ const TAG_OPTS = TRANSACTION_TAGS.filter(t => t !== '');
 // "More filters" options (combined popover, not tied to a column header).
 const SOURCE_OPTS = ['Manual', 'SMS', 'Email', 'PDF'];
 let cardOpts = [];
+let knownConfigCards = new Set();
+
+// Cards seen on loaded transaction rows but absent from config/cards are
+// orphans — auto-add them to config and the filter options. Runs against
+// each loaded page instead of the old full-collection scan at init.
+function absorbOrphanCards(txns) {
+  const orphans = [...new Set(txns.map(t => t.card).filter(Boolean))]
+    .filter(n => !knownConfigCards.has(n));
+  if (!orphans.length) return;
+  const patch = {};
+  for (const name of orphans) {
+    knownConfigCards.add(name);
+    cardStatusMap[name] = 'active';
+    patch[name] = { active: true, _autoAdded: true };
+  }
+  cardOpts = [...new Set([...cardOpts, ...orphans])].sort();
+  setDoc(doc(db, 'config', 'cards'), patch, { merge: true }).catch(() => {});
+}
 let columnFiltersInit = false;
 let colFilters = {
   date: { from: '', to: '' },
@@ -371,11 +389,14 @@ export function clearAllFilters() {
 }
 
 async function initColumnFilters() {
-  const [cardsSnap, txnSnap] = await Promise.all([
-    getDoc(doc(db, 'config', 'cards')),
-    getDocs(query(collection(db, 'transactions'), orderBy('date', 'desc'))),
-  ]);
+  // Card names come from config/cards alone — previously this also downloaded
+  // EVERY transaction ever (unbounded scan) just to collect card names, which
+  // stalled the tab's first paint behind the whole collection. Orphan cards
+  // (present in txns but missing from config) are absorbed lazily from rows
+  // as pages actually load — see absorbOrphanCards().
+  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
   const configCards = cardsSnap.exists() ? cardsSnap.data() : {};
+  knownConfigCards = new Set(Object.keys(configCards));
 
   // Build status map from config/cards
   cardStatusMap = {};
@@ -388,19 +409,7 @@ async function initColumnFilters() {
     }
   }
 
-  // Cards present in transactions but absent entirely from config/cards are orphans → auto-add
-  const txnCardNames = new Set(txnSnap.docs.map(d => d.data().card).filter(Boolean));
-  const orphans = [...txnCardNames].filter(n => !(n in configCards));
-  if (orphans.length > 0) {
-    const updated = { ...configCards };
-    for (const name of orphans) {
-      updated[name] = { active: true, _autoAdded: true };
-      cardStatusMap[name] = 'active';
-    }
-    setDoc(doc(db, 'config', 'cards'), updated).catch(() => {});
-  }
-
-  cardOpts = [...new Set([...Object.keys(configCards), ...txnCardNames])].sort();
+  cardOpts = [...knownConfigCards].sort();
 
   document.querySelectorAll('.th-filter').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -502,6 +511,7 @@ export async function loadTransactions(reset = false) {
     if (firstPage) document.getElementById('transactions-list').innerHTML = '';
 
     const txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    absorbOrphanCards(txns);
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, firstPage && txns.length === 0, vtChildMap);
 
@@ -1163,6 +1173,7 @@ async function loadFilteredTransactions() {
 
     const snap = await getDocs(query(collection(db, 'transactions'), ...constraints));
     let txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    absorbOrphanCards(txns);
 
     if (f.card.length)     txns = txns.filter(t => f.card.includes(t.card));
     if (f.category.length) txns = txns.filter(t => f.category.includes(t.category));

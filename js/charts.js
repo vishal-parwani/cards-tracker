@@ -73,20 +73,29 @@ function visibleTotal(chart) {
   return total;
 }
 
-export async function loadCharts() {
+// `allTxns` is the dashboard's already-fetched transactions array — charts
+// filter it client-side instead of re-downloading months of data from
+// Firestore on every dashboard load.
+export async function loadCharts(allTxns) {
   const now      = new Date();
   const ytdStart = new Date(now.getFullYear(), 0, 1);
   const sixAgo   = new Date(now.getFullYear(), now.getMonth() - 5, 1);
   const barStart = new Date(Math.min(ytdStart.getTime(), sixAgo.getTime()));
   const mtdStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const snap = await getDocs(query(
-    collection(db, 'transactions'),
-    where('date', '>=', Timestamp.fromDate(barStart)),
-    orderBy('date', 'asc')
-  ));
-
-  const txns = snap.docs.map(d => d.data()).filter(t => t.type === 'debit');
+  let txns;
+  if (allTxns) {
+    txns = allTxns.filter(t =>
+      t.type === 'debit' && t.date &&
+      (t.date.toDate ? t.date.toDate() : new Date(t.date)) >= barStart);
+  } else {
+    const snap = await getDocs(query(
+      collection(db, 'transactions'),
+      where('date', '>=', Timestamp.fromDate(barStart)),
+      orderBy('date', 'asc')
+    ));
+    txns = snap.docs.map(d => d.data()).filter(t => t.type === 'debit');
+  }
 
   // ── Build month list for bar chart ───────────────────────────────
   const months = [];

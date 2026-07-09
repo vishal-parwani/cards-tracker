@@ -3,6 +3,7 @@ import {
   orderBy, Timestamp, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+import { getTxns } from './store.js';
 import { formatCurrency, guardWrite } from './utils.js';
 import { isAepEligible, computeAepBands, resolveDashboardWidget } from './points-config.js';
 
@@ -29,22 +30,20 @@ async function computeAepForMonth(monthSort, cardName) {
   const monthStart = new Date(year, month1 - 1, 1);
   const monthEnd   = new Date(year, month1, 1);
 
-  const [txnSnap, mbAepSnap] = await Promise.all([
-    getDocs(query(
-      collection(db, 'transactions'),
-      where('card', '==', cardName),
-      where('date', '>=', Timestamp.fromDate(monthStart)),
-      where('date', '<', Timestamp.fromDate(monthEnd)),
-    )),
+  // Txns from the shared live store (this used to run one card+month
+  // Firestore query PER LEDGER ROW); mbAep is one small config doc.
+  const [allTxns, mbAepSnap] = await Promise.all([
+    getTxns(),
     getDoc(doc(db, 'config', 'mbAep')),
   ]);
 
   const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
 
   let totalDebit = 0, eligibleSpend = 0, txnCount = 0, ineligibleCount = 0;
-  txnSnap.forEach(d => {
-    const t = d.data();
-    if (t.type !== 'debit') return;
+  allTxns.forEach(t => {
+    if (t.card !== cardName || t.type !== 'debit' || !t.date) return;
+    const d = t.date.toDate ? t.date.toDate() : new Date(t.date);
+    if (d < monthStart || d >= monthEnd) return;
     txnCount++;
     totalDebit += t.amount || 0;
     if (isAepEligible(t)) eligibleSpend += t.amount || 0;
@@ -68,14 +67,10 @@ async function computeAepForMonth(monthSort, cardName) {
 //   • have Magnus debit spend AND
 //   • the 3rd of the following month has arrived
 async function findMissingLedgerMonths(existingMonthSorts, cardName) {
-  const snap = await getDocs(query(
-    collection(db, 'transactions'),
-    where('card', '==', cardName),
-  ));
+  const allTxns = await getTxns();
   const monthsSeen = new Set();
-  snap.forEach(d => {
-    const t = d.data();
-    if (t.type !== 'debit' || !t.date?.toDate) return;
+  allTxns.forEach(t => {
+    if (t.card !== cardName || t.type !== 'debit' || !t.date?.toDate) return;
     const dt = t.date.toDate();
     monthsSeen.add(monthSortKey(dt.getFullYear(), dt.getMonth() + 1));
   });

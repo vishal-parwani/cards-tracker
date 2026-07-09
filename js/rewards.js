@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+import { getTxns } from './store.js';
 import { formatDate, formatDateInput, guardWrite, showToast, initDatePickers } from './utils.js';
 
 // ── Period filter ─────────────────────────────────────────────────
@@ -62,13 +63,13 @@ export async function loadRewards() {
     const toInput = document.getElementById('rewards-to');
     const period = periodRange(activePreset, fromInput?.value, toInput?.value);
 
-    // Personal-scale volume — fetching all transactions is fine, and we
-    // need the full history anyway to compute closing back to each card's
-    // opening date.
-    const [cardsSnap, rtSnap, txnSnap] = await Promise.all([
+    // Transactions come from the shared live store (full history is needed
+    // to compute closing back to each card's opening date); rewardsTracker
+    // is a tiny per-card collection, still read directly.
+    const [cardsSnap, rtSnap, storeTxns] = await Promise.all([
       getDoc(doc(db, 'config', 'cards')),
       getDocs(collection(db, 'rewardsTracker')),
-      getDocs(collection(db, 'transactions')),
+      getTxns(),
     ]);
 
     const cardNames = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
@@ -77,10 +78,9 @@ export async function loadRewards() {
     rtSnap.forEach(d => { const v = d.data(); rtByCard[v.card] = { id: d.id, ...v }; });
 
     const txns = [];
-    txnSnap.forEach(d => {
-      const t = d.data();
+    storeTxns.forEach(t => {
       if (!t.date || !t.card) return;
-      txns.push({ card: t.card, date: t.date.toDate(), pts: t.pointsEarned || 0 });
+      txns.push({ card: t.card, date: t.date.toDate ? t.date.toDate() : new Date(t.date), pts: t.pointsEarned || 0 });
     });
 
     // Every config card gets a row; include any orphan rewardsTracker

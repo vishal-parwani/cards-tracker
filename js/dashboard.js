@@ -1,4 +1,5 @@
-import { collection, query, getDocs, getDocsFromCache, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { getTxns, getVts, onStoreChange } from './store.js';
 import { db } from './config.js';
 import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
 import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP, HSBC_TWP_CAP } from './points-config.js';
@@ -18,10 +19,24 @@ function expandBtn(key, title) {
 // panel — a slow earlier fetch can no longer clobber (or lose to) a newer one.
 let loadSeq = 0;
 
-export async function loadDashboard() {
+// Live refresh: when the store receives a delta (new SMS txn, edit from
+// another device) while the dashboard is on screen, re-render quietly —
+// no Loading flash, the numbers just update.
+let liveWired = false;
+function wireLiveRefresh() {
+  if (liveWired) return;
+  liveWired = true;
+  onStoreChange(() => {
+    const panel = document.getElementById('tab-dashboard');
+    if (panel && !panel.classList.contains('hidden')) loadDashboard(true);
+  });
+}
+
+export async function loadDashboard(quiet = false) {
+  wireLiveRefresh();
   const seq = ++loadSeq;
   const container = document.getElementById('dashboard-content');
-  container.innerHTML = '<p class="loading">Loading...</p>';
+  if (!quiet) container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
     const [cardsSnap, mbAepSnap] = await Promise.all([
@@ -43,30 +58,13 @@ export async function loadDashboard() {
       }));
     const mbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
 
-    // ONE transactions fetch for the whole dashboard. Everything downstream —
-    // per-card balances, tracker widgets, VT summary, charts — computes from
-    // this single snapshot (previously 3 Firestore queries per card, one of
-    // them unbounded, plus a second big scan inside loadCharts).
-    const txnQ = query(collection(db, 'transactions'));
-    const vtQ  = query(collection(db, 'voucherTrades'));
-
-    const render = (txnSnap, vtSnap) => {
-      if (seq !== loadSeq) return;
-      const txns = txnSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const vts  = vtSnap.docs.map(d => d.data());
-      renderDashboard(container, cards, mbAep, txns, vts);
-    };
-
-    // Cache-first paint: render instantly from the local Firestore cache when
-    // it has data (persistent cache — see config.js), then refresh from the
-    // server. First-ever load has no cache and just waits for the server.
-    try {
-      const [ct, cv] = await Promise.all([getDocsFromCache(txnQ), getDocsFromCache(vtQ)]);
-      if (!ct.empty) render(ct, cv);
-    } catch (_) { /* cache empty — fall through to server */ }
-
-    const [st, sv] = await Promise.all([getDocs(txnQ), getDocs(vtQ)]);
-    render(st, sv);
+    // Everything downstream — per-card balances, tracker widgets, VT summary,
+    // charts — computes from the shared live store (store.js). The store's
+    // listeners resume from the persistent cache, so this resolves instantly
+    // on repeat visits and only doc DELTAS ever cross the network.
+    const [txns, vts] = await Promise.all([getTxns(), getVts()]);
+    if (seq !== loadSeq) return;
+    renderDashboard(container, cards, mbAep, txns, vts);
   } catch (e) {
     if (seq === loadSeq) {
       container.innerHTML = `<p class="error">Error loading dashboard: ${e.message}</p>`;

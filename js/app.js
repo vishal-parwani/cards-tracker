@@ -8,6 +8,7 @@ import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepRec
 import { loadRewards, setRewardsPreset, setRewardsCustom, openEditRewardModal, saveReward, deleteReward, closeRewardModal, addRedemptionRow } from './rewards.js';
 import { loadSettings, openAddCardModal, openEditCardModal, saveCard, closeCardModal, openAddAddOnModal, openEditAddOnModal, saveAddOnCard, closeAddOnModal, deleteAddOnCard, toggleArchiveCard, deleteCard, restoreCard } from './settings.js';
 import { initDatePickers } from './utils.js';
+import { startStore } from './store.js';
 
 // Expose handlers to HTML onclick attributes
 window.editTransaction = openEditTransaction;
@@ -48,6 +49,7 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('user-name').textContent = user.displayName || user.email || '';
+    startStore();
     await runVtCategoryMigration().catch(e => console.warn('VT category backfill failed:', e));
     switchTab('dashboard');
   } else {

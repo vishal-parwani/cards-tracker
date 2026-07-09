@@ -1,10 +1,20 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, startAfter, Timestamp, getDoc, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, getDoc, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+import { getTxns, getVts } from './store.js';
+
+// Store txns sorted date-desc (the list order). Docs without a date sink to
+// the bottom, matching the old orderBy('date','desc') server sort.
+async function sortedStoreTxns() {
+  const txns = await getTxns();
+  const ms = t => (t.date && t.date.toMillis) ? t.date.toMillis()
+             : (t.date ? new Date(t.date).getTime() : -Infinity);
+  return [...txns].sort((a, b) => ms(b) - ms(a));
+}
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
 import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
 
 const PAGE_SIZE = 50;
-let lastVisible = null;
+let renderedCount = 0;
 let allLoaded = false;
 let modalCardsData = {};
 let stmtListenersAttached = false;
@@ -492,25 +502,22 @@ export async function loadTransactions(reset = false) {
     }
 
     if (reset) {
-      lastVisible = null;
+      renderedCount = 0;
       allLoaded = false;
       document.getElementById('transactions-list').innerHTML =
         '<tr><td colspan="8" class="loading">Loading…</td></tr>';
     }
     if (allLoaded) return;
 
-    const firstPage = !lastVisible;
-    const q = firstPage
-      ? query(collection(db, 'transactions'), orderBy('date', 'desc'), limit(PAGE_SIZE))
-      : query(collection(db, 'transactions'), orderBy('date', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
-
-    const snap = await getDocs(q);
-    if (snap.docs.length < PAGE_SIZE) allLoaded = true;
-    if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1];
+    // Pages are slices of the live store — no per-page Firestore reads.
+    const all = await sortedStoreTxns();
+    const firstPage = renderedCount === 0;
+    const txns = all.slice(renderedCount, renderedCount + PAGE_SIZE);
+    renderedCount += txns.length;
+    if (renderedCount >= all.length) allLoaded = true;
 
     if (firstPage) document.getElementById('transactions-list').innerHTML = '';
 
-    const txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     absorbOrphanCards(txns);
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, firstPage && txns.length === 0, vtChildMap);
@@ -525,17 +532,15 @@ export async function loadTransactions(reset = false) {
 }
 
 async function buildVtEnrichment(txns) {
-  const parentIds = [...new Set(txns.filter(t => t.voucherTradeParentId).map(t => t.voucherTradeParentId))];
+  const parentIds = new Set(txns.filter(t => t.voucherTradeParentId).map(t => t.voucherTradeParentId));
   const childMap = new Map();
-  for (let i = 0; i < parentIds.length; i += 30) {
-    const chunk = parentIds.slice(i, i + 30);
-    const snap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', 'in', chunk)));
-    snap.docs.forEach(d => {
-      const data = d.data();
-      if (!childMap.has(data.parentId)) childMap.set(data.parentId, []);
-      childMap.get(data.parentId).push({ id: d.id, ...data });
-    });
-  }
+  if (!parentIds.size) return childMap;
+  const vts = await getVts();
+  vts.forEach(v => {
+    if (!v.parentId || !parentIds.has(v.parentId)) return;
+    if (!childMap.has(v.parentId)) childMap.set(v.parentId, []);
+    childMap.get(v.parentId).push(v);
+  });
   return childMap;
 }
 
@@ -1167,12 +1172,15 @@ async function loadFilteredTransactions() {
 
   try {
     const f = colFilters;
-    const constraints = [orderBy('date', 'desc')];
-    if (f.date.from) constraints.push(where('date', '>=', Timestamp.fromDate(new Date(f.date.from + 'T00:00:00'))));
-    if (f.date.to)   constraints.push(where('date', '<=', Timestamp.fromDate(new Date(f.date.to + 'T23:59:59'))));
-
-    const snap = await getDocs(query(collection(db, 'transactions'), ...constraints));
-    let txns = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let txns = await sortedStoreTxns();
+    if (f.date.from) {
+      const from = new Date(f.date.from + 'T00:00:00');
+      txns = txns.filter(t => t.date && (t.date.toDate ? t.date.toDate() : new Date(t.date)) >= from);
+    }
+    if (f.date.to) {
+      const to = new Date(f.date.to + 'T23:59:59');
+      txns = txns.filter(t => t.date && (t.date.toDate ? t.date.toDate() : new Date(t.date)) <= to);
+    }
     absorbOrphanCards(txns);
 
     if (f.card.length)     txns = txns.filter(t => f.card.includes(t.card));
@@ -1220,9 +1228,8 @@ export async function exportTransactionsXlsx() {
   if (btn) btn.disabled = true;
   try {
     await loadXlsxLibrary();
-    const snap = await getDocs(query(collection(db, 'transactions'), orderBy('date', 'desc')));
-    const rows = snap.docs.map(d => {
-      const t = d.data();
+    const all = await sortedStoreTxns();
+    const rows = all.map(t => {
       return {
         Date: t.date?.toDate ? t.date.toDate() : t.date,
         Card: t.card || '',

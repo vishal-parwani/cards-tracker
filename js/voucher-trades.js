@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+import { getTxns, getVts } from './store.js';
 import { formatCurrency, formatDate, formatDateInput, aggregateChildStatus, sumChildHaircut, computeChildHaircutPnl, guardWrite, showToast } from './utils.js';
 
 let creditTxnsCache = null; // populated on first child-edit modal open per session
@@ -11,8 +12,10 @@ export async function loadVoucherTrades() {
   container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
-    const snap = await getDocs(query(collection(db, 'voucherTrades'), orderBy('purchaseDate', 'desc')));
-    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const vts = await getVts();
+    const ms = v => (v.purchaseDate && v.purchaseDate.toMillis) ? v.purchaseDate.toMillis()
+               : (v.purchaseDate ? new Date(v.purchaseDate).getTime() : -Infinity);
+    const all = [...vts].sort((a, b) => ms(b) - ms(a));
 
     const parents = all.filter(d => d.isParent);
     const childrenByParent = new Map();
@@ -515,14 +518,12 @@ async function syncCreditLinkArrays(batch, childId, prevSettlementId, newSettlem
 
 async function populateCreditTxnDropdown(selectId, selectedId) {
   if (!creditTxnsCache) {
-    const snap = await getDocs(query(
-      collection(db, 'transactions'),
-      orderBy('date', 'desc'),
-      limit(150),
-    ));
-    creditTxnsCache = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+    const txns = await getTxns();
+    const ms = t => (t.date && t.date.toMillis) ? t.date.toMillis()
+               : (t.date ? new Date(t.date).getTime() : -Infinity);
+    creditTxnsCache = txns
       .filter(t => t.type === 'credit')
+      .sort((a, b) => ms(b) - ms(a))
       .slice(0, 60);
   }
   const select = document.getElementById(selectId);

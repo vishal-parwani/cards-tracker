@@ -1,15 +1,39 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, limit, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, addDoc, updateDoc, doc, Timestamp, getDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { getTxns, getVts } from './store.js';
+import { getTxns, getVts, onStoreChange } from './store.js';
 import { formatCurrency, formatDate, formatDateInput, aggregateChildStatus, sumChildHaircut, computeChildHaircutPnl, guardWrite, showToast } from './utils.js';
 
 let creditTxnsCache = null; // populated on first child-edit modal open per session
 
 let showCompleted = false;
 
+// Read the current doc straight from the live store instead of a server-first
+// getDoc. A getDoc on a zombie connection (iOS PWA resumed from background)
+// hangs until the dead channel times out — that was the "click the tick, enter
+// an amount, nothing happens" freeze. The store is already in memory and
+// latency-compensated, so these are instant and always reflect local writes.
+async function vtById(id) { return (await getVts()).find(v => v.id === id) || null; }
+async function txnById(id) { return (await getTxns()).find(t => t.id === id) || null; }
+
+// Re-render the VT tab whenever the store changes (a local write's latency-
+// compensated snapshot, or an edit from another device) while the tab is on
+// screen. Save handlers no longer await the server commit or reload manually —
+// they close the modal and let this fire, so a flaky connection can't freeze
+// the flow.
+let liveWired = false;
+function wireVtLiveRefresh() {
+  if (liveWired) return;
+  liveWired = true;
+  onStoreChange(() => {
+    const panel = document.getElementById('tab-voucher-trades');
+    if (panel && !panel.classList.contains('hidden')) loadVoucherTrades();
+  });
+}
+
 export async function loadVoucherTrades() {
+  wireVtLiveRefresh();
   const container = document.getElementById('voucher-trades-list');
-  container.innerHTML = '<p class="loading">Loading...</p>';
+  if (!container.querySelector('table')) container.innerHTML = '<p class="loading">Loading...</p>';
 
   try {
     const vts = await getVts();
@@ -170,9 +194,8 @@ function renderParentRows(parent, children, showCash) {
 // ─── Legacy doc handlers (unchanged) ─────────────────────────────────────────
 
 export async function openMarkTradedModal(id) {
-  const snap = await getDoc(doc(db, 'voucherTrades', id));
-  if (!snap.exists()) return;
-  const trade = { id, ...snap.data() };
+  const trade = await vtById(id);
+  if (!trade) return;
 
   document.getElementById('mark-traded-id').value = id;
   document.getElementById('mark-traded-trade-date').value = new Date().toISOString().split('T')[0];
@@ -192,22 +215,19 @@ export async function saveMarkTraded() {
     return;
   }
 
-  const snap = await getDoc(doc(db, 'voucherTrades', id));
-  const trade = snap.data();
+  const trade = await vtById(id);
+  if (!trade) return;
   const purchaseAmount = trade.purchaseAmount || 0;
   const haircut = purchaseAmount > 0 ? ((purchaseAmount - cashReceived) / purchaseAmount * 100) : 0;
 
-  const ok = await guardWrite(() => updateDoc(doc(db, 'voucherTrades', id), {
+  closeMarkTradedModal();
+  guardWrite(() => updateDoc(doc(db, 'voucherTrades', id), {
     status: 'Traded',
     tradeDate: Timestamp.fromDate(new Date(tradeDateStr)),
     cashReceived,
     haircut: parseFloat(haircut.toFixed(2)),
     netPnl: cashReceived - purchaseAmount
   }), 'Mark as traded');
-  if (!ok) return;
-
-  closeMarkTradedModal();
-  loadVoucherTrades();
 }
 
 export async function openAddTradeModal() {
@@ -223,9 +243,8 @@ export async function openAddTradeModal() {
 }
 
 export async function openEditTradeModal(id) {
-  const snap = await getDoc(doc(db, 'voucherTrades', id));
-  if (!snap.exists()) return;
-  const trade = snap.data();
+  const trade = await vtById(id);
+  if (!trade) return;
   const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
   const cards = cardsSnap.exists() ? Object.keys(cardsSnap.data()) : [];
 
@@ -255,16 +274,13 @@ export async function saveTrade() {
     status: 'Pending'
   };
 
-  const ok = await guardWrite(
+  closeAddTradeModal();
+  guardWrite(
     () => id
       ? updateDoc(doc(db, 'voucherTrades', id), data)
       : addDoc(collection(db, 'voucherTrades'), data),
     id ? 'Update voucher trade' : 'Add voucher trade'
   );
-  if (!ok) return;
-
-  closeAddTradeModal();
-  loadVoucherTrades();
 }
 
 export function toggleCompleted() {
@@ -286,26 +302,27 @@ export function closeAddTradeModal() {
 
 export async function deleteVtParent(id) {
   if (!confirm('Delete this voucher trade and ALL its splits? The linked debit transaction will be unlinked.')) return;
-  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', id)));
-  const txnSnap = await getDocs(query(collection(db, 'transactions'), where('voucherTradeParentId', '==', id)));
+  const vts = await getVts();
+  const txns = await getTxns();
+  const children = vts.filter(v => v.parentId === id);
+  const linkedTxns = txns.filter(t => t.voucherTradeParentId === id);
 
   const batch = writeBatch(db);
   batch.delete(doc(db, 'voucherTrades', id));
-  childSnap.docs.forEach(c => batch.delete(c.ref));
+  children.forEach(c => batch.delete(doc(db, 'voucherTrades', c.id)));
   // Also strip child ids from any settling credit txn arrays.
-  for (const c of childSnap.docs) {
-    const settleId = c.data().settlementTransactionId;
+  for (const c of children) {
+    const settleId = c.settlementTransactionId;
     if (settleId) {
-      const sSnap = await getDoc(doc(db, 'transactions', settleId));
-      if (sSnap.exists()) {
-        const arr = (sSnap.data().voucherTradeChildIds || []).filter(x => x !== c.id);
-        batch.update(sSnap.ref, { voucherTradeChildIds: arr });
+      const s = txns.find(t => t.id === settleId);
+      if (s) {
+        const arr = (s.voucherTradeChildIds || []).filter(x => x !== c.id);
+        batch.update(doc(db, 'transactions', settleId), { voucherTradeChildIds: arr });
       }
     }
   }
-  txnSnap.docs.forEach(t => batch.update(t.ref, { voucherTradeParentId: null }));
-  if (!await guardWrite(() => batch.commit(), 'Delete voucher trade')) return;
-  loadVoucherTrades();
+  linkedTxns.forEach(t => batch.update(doc(db, 'transactions', t.id), { voucherTradeParentId: null }));
+  guardWrite(() => batch.commit(), 'Delete voucher trade');
 }
 
 // ─── Manage Splits modal (parent edit) ───────────────────────────────────────
@@ -313,11 +330,10 @@ export async function deleteVtParent(id) {
 let editSplitsState = { parentId: null, parent: null, originalChildren: [] };
 
 export async function openEditSplitsModal(parentId) {
-  const parentSnap = await getDoc(doc(db, 'voucherTrades', parentId));
-  if (!parentSnap.exists()) return;
-  const parent = parentSnap.data();
-  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', parentId)));
-  const children = childSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const vts = await getVts();
+  const parent = vts.find(v => v.id === parentId);
+  if (!parent) return;
+  const children = vts.filter(v => v.parentId === parentId);
 
   editSplitsState = { parentId, parent, originalChildren: children };
   document.getElementById('edit-splits-parent-id').value = parentId;
@@ -411,18 +427,16 @@ export async function saveEditSplits() {
     }
   }
   for (const c of removed) batch.delete(doc(db, 'voucherTrades', c.id));
-  if (!await guardWrite(() => batch.commit(), 'Save splits')) return;
 
   document.getElementById('edit-splits-modal').classList.add('hidden');
-  loadVoucherTrades();
+  guardWrite(() => batch.commit(), 'Save splits');
 }
 
 // ─── Settle modal (child) ────────────────────────────────────────────────────
 
 export async function openSettleVtModal(childId) {
-  const snap = await getDoc(doc(db, 'voucherTrades', childId));
-  if (!snap.exists()) return;
-  const c = snap.data();
+  const c = await vtById(childId);
+  if (!c) return;
   const isAlreadyTraded = c.status === 'Traded';
 
   document.getElementById('settle-vt-id').value = childId;
@@ -455,9 +469,8 @@ export async function saveSettleVt() {
   const linkedCreditId = document.getElementById('settle-vt-credit-link').value || null;
   if (!tradeDateStr || isNaN(cash) || cash < 0) { alert('Enter a valid trade date and a non-negative cash amount.'); return; }
 
-  const childSnap = await getDoc(doc(db, 'voucherTrades', id));
-  if (!childSnap.exists()) return;
-  const c = childSnap.data();
+  const c = await vtById(id);
+  if (!c) return;
   const prevSettlementId = c.settlementTransactionId || null;
   const { haircut, netPnl } = computeChildHaircutPnl(c.purchaseAmount || 0, cash);
 
@@ -471,17 +484,16 @@ export async function saveSettleVt() {
     settlementTransactionId: linkedCreditId,
   });
   await syncCreditLinkArrays(batch, id, prevSettlementId, linkedCreditId);
-  if (!await guardWrite(() => batch.commit(), 'Settle voucher trade')) return;
 
   document.getElementById('settle-vt-modal').classList.add('hidden');
-  loadVoucherTrades();
+  guardWrite(() => batch.commit(), 'Settle voucher trade');
 }
 
 export async function unsettleVt() {
   const id = document.getElementById('settle-vt-id').value;
-  const childSnap = await getDoc(doc(db, 'voucherTrades', id));
-  if (!childSnap.exists()) return;
-  const prevSettlementId = childSnap.data().settlementTransactionId || null;
+  const c = await vtById(id);
+  if (!c) return;
+  const prevSettlementId = c.settlementTransactionId || null;
 
   const batch = writeBatch(db);
   batch.update(doc(db, 'voucherTrades', id), {
@@ -493,25 +505,24 @@ export async function unsettleVt() {
     settlementTransactionId: null,
   });
   await syncCreditLinkArrays(batch, id, prevSettlementId, null);
-  if (!await guardWrite(() => batch.commit(), 'Unsettle voucher trade')) return;
 
   document.getElementById('settle-vt-modal').classList.add('hidden');
-  loadVoucherTrades();
+  guardWrite(() => batch.commit(), 'Unsettle voucher trade');
 }
 
 async function syncCreditLinkArrays(batch, childId, prevSettlementId, newSettlementId) {
   if (prevSettlementId && prevSettlementId !== newSettlementId) {
-    const prevSnap = await getDoc(doc(db, 'transactions', prevSettlementId));
-    if (prevSnap.exists()) {
-      const arr = (prevSnap.data().voucherTradeChildIds || []).filter(x => x !== childId);
-      batch.update(prevSnap.ref, { voucherTradeChildIds: arr });
+    const prev = await txnById(prevSettlementId);
+    if (prev) {
+      const arr = (prev.voucherTradeChildIds || []).filter(x => x !== childId);
+      batch.update(doc(db, 'transactions', prevSettlementId), { voucherTradeChildIds: arr });
     }
   }
   if (newSettlementId && newSettlementId !== prevSettlementId) {
-    const newSnap = await getDoc(doc(db, 'transactions', newSettlementId));
-    if (newSnap.exists()) {
-      const arr = newSnap.data().voucherTradeChildIds || [];
-      if (!arr.includes(childId)) batch.update(newSnap.ref, { voucherTradeChildIds: [...arr, childId] });
+    const next = await txnById(newSettlementId);
+    if (next) {
+      const arr = next.voucherTradeChildIds || [];
+      if (!arr.includes(childId)) batch.update(doc(db, 'transactions', newSettlementId), { voucherTradeChildIds: [...arr, childId] });
     }
   }
 }

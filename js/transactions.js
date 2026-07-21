@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, getDoc, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, updateDoc, deleteDoc, doc, Timestamp, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { getTxns, getVts } from './store.js';
+import { getTxns, getVts, onStoreChange, getCachedDoc } from './store.js';
 
 // Store txns sorted date-desc (the list order). Docs without a date sink to
 // the bottom, matching the old orderBy('date','desc') server sort.
@@ -9,6 +9,47 @@ async function sortedStoreTxns() {
   const ms = t => (t.date && t.date.toMillis) ? t.date.toMillis()
              : (t.date ? new Date(t.date).getTime() : -Infinity);
   return [...txns].sort((a, b) => ms(b) - ms(a));
+}
+
+// Store lookup instead of a server-first getDoc — see voucher-trades.js: a
+// getDoc on a zombie connection hangs; the store is instant and reflects
+// local pending writes via latency compensation.
+async function txnById(id) { return (await getTxns()).find(t => t.id === id) || null; }
+
+// Re-render the current view when the store changes while the tab is on
+// screen (a local write's latency-compensated snapshot, an SMS landing, or an
+// edit from another device). Save/delete handlers fire their commits in the
+// background and rely on this instead of awaiting the server.
+let txnLiveWired = false;
+function wireTxnLiveRefresh() {
+  if (txnLiveWired) return;
+  txnLiveWired = true;
+  onStoreChange(() => {
+    const panel = document.getElementById('tab-transactions');
+    if (panel && !panel.classList.contains('hidden')) rerenderCurrentView();
+    // If the txn modal is open on an existing txn, refresh its VT section too —
+    // the immediate render after a background commit can win the race against
+    // the store's latency-compensated snapshot; this pass corrects it.
+    const modal = document.getElementById('transaction-modal');
+    const openId = document.getElementById('txn-id').value;
+    if (modal && !modal.classList.contains('hidden') && openId) {
+      txnById(openId).then(t => { if (t) renderVtSection(t); });
+    }
+  });
+}
+
+// Re-slice the store to the depth already on screen (keeps "Load more" state).
+async function rerenderCurrentView() {
+  if (!columnFiltersInit) return;
+  if (hasActiveFilters()) { await loadFilteredTransactions(); return; }
+  const all = await sortedStoreTxns();
+  const txns = all.slice(0, Math.min(Math.max(renderedCount, PAGE_SIZE), all.length));
+  renderedCount = txns.length;
+  allLoaded = renderedCount >= all.length;
+  document.getElementById('transactions-list').innerHTML = '';
+  const vtChildMap = await buildVtEnrichment(txns);
+  renderTransactions(txns, txns.length === 0, vtChildMap);
+  document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
 }
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
 import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
@@ -85,29 +126,9 @@ function txnIsVt(t) {
   return !!(t.voucherTradeParentId || (t.voucherTradeChildIds || []).length);
 }
 
-// One-time backfill: stamp category 'Voucher Trades' on every transaction
-// already linked to a voucher trade (debits carrying voucherTradeParentId).
-// Guarded by a flag in config/migrations so it runs exactly once, then no-ops.
-export async function runVtCategoryMigration() {
-  const flagRef = doc(db, 'config', 'migrations');
-  const flagSnap = await getDoc(flagRef);
-  if (flagSnap.exists() && flagSnap.data().vtCategoryBackfill) return;
-
-  const snap = await getDocs(query(
-    collection(db, 'transactions'),
-    where('voucherTradeParentId', '!=', null),
-  ));
-  let n = 0;
-  let batch = writeBatch(db);
-  for (const d of snap.docs) {
-    if (d.data().category === 'Voucher Trades') continue;
-    batch.update(d.ref, { category: 'Voucher Trades' });
-    n++;
-    if (n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
-  }
-  if (n % 400 !== 0) await batch.commit();
-  await setDoc(flagRef, { vtCategoryBackfill: true }, { merge: true });
-}
+// (The one-time 'Voucher Trades' category backfill that used to live here ran
+// to completion weeks ago — flag `vtCategoryBackfill` in config/migrations.
+// Its launch-blocking flag check was removed 2026-07-20.)
 
 function autoComputePoints() {
   if (pointsManuallyEdited) return;
@@ -404,7 +425,7 @@ async function initColumnFilters() {
   // stalled the tab's first paint behind the whole collection. Orphan cards
   // (present in txns but missing from config) are absorbed lazily from rows
   // as pages actually load — see absorbOrphanCards().
-  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+  const cardsSnap = await getCachedDoc('config', 'cards');
   const configCards = cardsSnap.exists() ? cardsSnap.data() : {};
   knownConfigCards = new Set(Object.keys(configCards));
 
@@ -490,6 +511,7 @@ function ensureStmtListeners() {
 }
 
 export async function loadTransactions(reset = false) {
+  wireTxnLiveRefresh();
   try {
     if (!columnFiltersInit) {
       await initColumnFilters();
@@ -646,15 +668,15 @@ function removeRowFromDom(id) {
 }
 
 export async function openAddTransaction() {
-  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
+  const cardsSnap = await getCachedDoc('config', 'cards');
   showTransactionModal(null, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 
 export async function openEditTransaction(id) {
-  const snap = await getDoc(doc(db, 'transactions', id));
-  if (!snap.exists()) return;
-  const cardsSnap = await getDoc(doc(db, 'config', 'cards'));
-  showTransactionModal({ id, ...snap.data() }, cardsSnap.exists() ? cardsSnap.data() : {});
+  const txn = await txnById(id);
+  if (!txn) return;
+  const cardsSnap = await getCachedDoc('config', 'cards');
+  showTransactionModal(txn, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 
 function showTransactionModal(txn, cardsData) {
@@ -727,10 +749,7 @@ function ensureVtSectionListeners() {
     // Re-render with current DOM state; we don't have the full txn obj here.
     // Reload the txn from Firestore if it was an edit so we keep linkage.
     if (txnId) {
-      getDoc(doc(db, 'transactions', txnId)).then(s => {
-        if (s.exists()) renderVtSection({ id: txnId, ...s.data() });
-        else renderVtSection(null);
-      });
+      txnById(txnId).then(t => renderVtSection(t));
     } else {
       renderVtSection(null);
     }
@@ -752,13 +771,13 @@ async function renderVtSection(txn) {
   if (type === 'debit') {
     if (txn.voucherTradeParentId) {
       // Already linked debit — show summary + unlink.
-      const parentSnap = await getDoc(doc(db, 'voucherTrades', txn.voucherTradeParentId));
-      if (!parentSnap.exists()) {
+      const vts = await getVts();
+      const parent = vts.find(v => v.id === txn.voucherTradeParentId);
+      if (!parent) {
         section.innerHTML = `<div class="vt-section-inner muted">Linked voucher trade no longer exists. <button class="btn btn-sm btn-secondary" onclick="window.unlinkVtFromTxn('${txn.id}')">Clear link</button></div>`;
         return;
       }
-      const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', txn.voucherTradeParentId)));
-      const children = childSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const children = vts.filter(v => v.parentId === txn.voucherTradeParentId);
       const status = aggregateChildStatus(children);
       const haircut = sumChildHaircut(children);
       section.innerHTML = `
@@ -789,13 +808,8 @@ async function renderVtSection(txn) {
   if (type === 'credit') {
     const linkedIds = txn.voucherTradeChildIds || [];
     if (linkedIds.length > 0) {
-      // Fetch linked children (chunks of 30 for `in` queries).
-      const children = [];
-      for (let i = 0; i < linkedIds.length; i += 30) {
-        const chunk = linkedIds.slice(i, i + 30);
-        const snap = await getDocs(query(collection(db, 'voucherTrades'), where('__name__', 'in', chunk)));
-        snap.docs.forEach(d => children.push({ id: d.id, ...d.data() }));
-      }
+      const idSet = new Set(linkedIds);
+      const children = (await getVts()).filter(v => idSet.has(v.id));
       section.innerHTML = `
         <div class="vt-section-inner">
           <div class="vt-section-title">Settles Voucher Trade${children.length === 1 ? '' : 's'}</div>
@@ -825,10 +839,12 @@ async function renderVtSection(txn) {
 
 // ─── Convert-to-VT (debit) ───────────────────────────────────────────────────
 
-export async function openConvertToVtModal(txnId) {
-  const snap = await getDoc(doc(db, 'transactions', txnId));
-  if (!snap.exists()) return;
-  const t = snap.data();
+export async function openConvertToVtModal(txnId, fallbackTxn = null) {
+  // fallbackTxn covers the just-added-txn race: saveTransaction fires its
+  // write in the background, so the store may not have emitted the new doc
+  // yet when the 1B convert flow opens this modal.
+  const t = (await txnById(txnId)) || fallbackTxn;
+  if (!t) return;
   document.getElementById('vt-split-source-txn-id').value = txnId;
   const rows = document.getElementById('vt-split-rows');
   rows.innerHTML = '';
@@ -873,9 +889,8 @@ export async function saveVtSplits() {
   if (splits.length === 0) { alert('Add at least one split with an amount.'); return; }
   if (splits.some(s => s.amount <= 0)) { alert('Each split amount must be greater than zero.'); return; }
 
-  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
-  if (!txnSnap.exists()) return;
-  const t = txnSnap.data();
+  const t = await txnById(txnId);
+  if (!t) return;
 
   const splitTotal = splits.reduce((s, x) => s + x.amount, 0);
   if (splitTotal > (t.amount || 0) + 0.01) {
@@ -911,9 +926,9 @@ export async function saveVtSplits() {
     voucherTradeParentId: parentRef.id,
     category: 'Voucher Trades',
   });
-  if (!await guardWrite(() => batch.commit(), 'Save voucher trade')) return;
 
   document.getElementById('vt-split-modal').classList.add('hidden');
+  guardWrite(() => batch.commit(), 'Save voucher trade');
   // Keep the txn modal (if still open on this txn) consistent — now a linked VT.
   if (document.getElementById('txn-id').value === txnId) {
     document.getElementById('txn-category').value = 'Voucher Trades';
@@ -921,36 +936,34 @@ export async function saveVtSplits() {
   }
   // Refresh the txn modal's VT section so it shows the new linkage.
   renderVtSection({ id: txnId, ...t, voucherTradeParentId: parentRef.id });
-  loadTransactions(true);
 }
 
 // Append a debit's voucher-trade deletes (parent + all splits) plus the txn's
 // own update to an open batch. Callers reset the category off 'Voucher Trades'
 // via txnUpdate so the label never outlives the trade (2A: category is master).
 async function purgeVtForTxn(batch, txnId, parentId, txnUpdate = {}) {
-  const childSnap = await getDocs(query(collection(db, 'voucherTrades'), where('parentId', '==', parentId)));
+  const vts = await getVts();
   batch.delete(doc(db, 'voucherTrades', parentId));
-  childSnap.docs.forEach(c => batch.delete(c.ref));
+  vts.filter(v => v.parentId === parentId).forEach(v => batch.delete(doc(db, 'voucherTrades', v.id)));
   batch.update(doc(db, 'transactions', txnId), { voucherTradeParentId: null, ...txnUpdate });
 }
 
 export async function unlinkVtFromTxn(txnId) {
   if (!confirm('Unlink and delete the voucher trade and all its splits?')) return;
-  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
-  if (!txnSnap.exists()) return;
-  const parentId = txnSnap.data().voucherTradeParentId;
+  const txn = await txnById(txnId);
+  if (!txn) return;
+  const parentId = txn.voucherTradeParentId;
   if (!parentId) return;
 
   const batch = writeBatch(db);
   await purgeVtForTxn(batch, txnId, parentId, { category: 'Miscellaneous' });
-  if (!await guardWrite(() => batch.commit(), 'Unlink voucher trade')) return;
+  guardWrite(() => batch.commit(), 'Unlink voucher trade');
   // Keep the (open) txn modal in sync — it's no longer a voucher trade.
   if (document.getElementById('txn-id').value === txnId) {
     document.getElementById('txn-category').value = 'Miscellaneous';
     if (editingOriginal) { editingOriginal.voucherTradeParentId = null; editingOriginal.category = 'Miscellaneous'; }
   }
-  renderVtSection({ id: txnId, ...txnSnap.data(), voucherTradeParentId: null, category: 'Miscellaneous' });
-  loadTransactions(true);
+  renderVtSection({ ...txn, voucherTradeParentId: null, category: 'Miscellaneous' });
 }
 
 // ─── Apply-to-VT (credit) ────────────────────────────────────────────────────
@@ -961,11 +974,9 @@ export async function openApplyToVtModal(txnId) {
   list.innerHTML = '<p class="loading">Loading pending voucher trades...</p>';
   document.getElementById('vt-apply-modal').classList.remove('hidden');
 
-  // Load all VT children with status='Pending' across all cards.
-  const snap = await getDocs(query(collection(db, 'voucherTrades'), where('status', '==', 'Pending')));
-  const children = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(c => c.parentId)
+  // All pending VT children across all cards, straight from the store.
+  const children = (await getVts())
+    .filter(v => v.status === 'Pending' && v.parentId)
     .sort((a, b) => (b.purchaseDate?.seconds || 0) - (a.purchaseDate?.seconds || 0));
 
   if (children.length === 0) {
@@ -993,9 +1004,8 @@ export async function openApplyToVtModal(txnId) {
 
 export async function saveVtApply() {
   const txnId = document.getElementById('vt-apply-source-txn-id').value;
-  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
-  if (!txnSnap.exists()) return;
-  const t = txnSnap.data();
+  const t = await txnById(txnId);
+  if (!t) return;
 
   const checks = [...document.querySelectorAll('#vt-apply-list .vt-apply-check')].filter(c => c.checked);
   if (checks.length === 0) { alert('Pick at least one voucher trade.'); return; }
@@ -1021,18 +1031,16 @@ export async function saveVtApply() {
     if (!linkedIds.includes(id)) linkedIds.push(id);
   }
   batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
-  if (!await guardWrite(() => batch.commit(), 'Apply credit to voucher trade')) return;
 
   document.getElementById('vt-apply-modal').classList.add('hidden');
-  renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
-  loadTransactions(true);
+  guardWrite(() => batch.commit(), 'Apply credit to voucher trade');
+  renderVtSection({ ...t, voucherTradeChildIds: linkedIds });
 }
 
 export async function unlinkVtChildFromCredit(txnId, childId) {
   if (!confirm('Revert this split to Pending?')) return;
-  const txnSnap = await getDoc(doc(db, 'transactions', txnId));
-  if (!txnSnap.exists()) return;
-  const t = txnSnap.data();
+  const t = await txnById(txnId);
+  if (!t) return;
   const linkedIds = (t.voucherTradeChildIds || []).filter(x => x !== childId);
 
   const batch = writeBatch(db);
@@ -1045,9 +1053,8 @@ export async function unlinkVtChildFromCredit(txnId, childId) {
     settlementTransactionId: null,
   });
   batch.update(doc(db, 'transactions', txnId), { voucherTradeChildIds: linkedIds });
-  if (!await guardWrite(() => batch.commit(), 'Revert voucher trade')) return;
-  renderVtSection({ id: txnId, ...t, voucherTradeChildIds: linkedIds });
-  loadTransactions(true);
+  guardWrite(() => batch.commit(), 'Revert voucher trade');
+  renderVtSection({ ...t, voucherTradeChildIds: linkedIds });
 }
 
 export async function saveTransaction() {
@@ -1115,28 +1122,28 @@ export async function saveTransaction() {
   }
 
   let savedId = id;
-  let ok;
   if (purgeVt) {
     const batch = writeBatch(db);
     await purgeVtForTxn(batch, id, editingOriginal.voucherTradeParentId, data);
-    ok = await guardWrite(() => batch.commit(), 'Update transaction');
+    guardWrite(() => batch.commit(), 'Update transaction');
   } else if (id) {
-    ok = await guardWrite(() => updateDoc(doc(db, 'transactions', id), data), 'Update transaction');
+    guardWrite(() => updateDoc(doc(db, 'transactions', id), data), 'Update transaction');
   } else {
-    let ref;
-    ok = await guardWrite(async () => { ref = await addDoc(collection(db, 'transactions'), data); }, 'Add transaction');
-    if (ok) savedId = ref.id;
+    // Client-generated id so the write can fire in the background — addDoc's
+    // promise only resolves on server ack, which hangs on a dead connection.
+    const ref = doc(collection(db, 'transactions'));
+    savedId = ref.id;
+    guardWrite(() => setDoc(ref, data), 'Add transaction');
   }
-  if (!ok) return;
 
   showToast(id ? 'Transaction updated.' : 'Transaction added.', 'success');
   closeTransactionModal();
 
   // 1B: newly marked 'Voucher Trades' (a debit not already a trade) → open the
   // split editor so the user defines the splits that make it a real trade.
+  // The list itself re-renders via the store's latency-compensated snapshot.
   if (data.type === 'debit' && catIsVt && !wasLinked) {
-    if (hasActiveFilters()) loadFilteredTransactions(); else loadTransactions(true);
-    openConvertToVtModal(savedId);
+    openConvertToVtModal(savedId, { id: savedId, ...data });
     return;
   }
 
@@ -1150,19 +1157,16 @@ export async function saveTransaction() {
       voucherTradeParentId: purgeVt ? null : (editingOriginal?.voucherTradeParentId || null),
       voucherTradeChildIds: editingOriginal?.voucherTradeChildIds || null,
     });
-  } else {
-    loadTransactions(true);
   }
 }
 
 export async function deleteTransaction(id) {
   if (!confirm('Delete this transaction?')) return;
-  if (!await guardWrite(() => deleteDoc(doc(db, 'transactions', id)), 'Delete transaction')) return;
+  guardWrite(() => deleteDoc(doc(db, 'transactions', id)), 'Delete transaction');
   showToast('Transaction deleted.', 'success');
-  // Under an active filter, reload so the totals footer recomputes; otherwise
-  // just drop the row in place.
-  if (hasActiveFilters()) loadFilteredTransactions();
-  else removeRowFromDom(id);
+  // Drop the row instantly; the store's snapshot re-render recomputes the
+  // filtered totals footer when one is active.
+  removeRowFromDom(id);
 }
 
 async function loadFilteredTransactions() {

@@ -1,6 +1,4 @@
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { getTxns, getVts, onStoreChange } from './store.js';
-import { db } from './config.js';
+import { getTxns, getVts, onStoreChange, getCachedDoc } from './store.js';
 import { formatCurrency, getStatementStartDate, getStatementEndDate, getCurrentMonthStart, getBillingCycleLabel } from './utils.js';
 import { isAepEligible, smartBuyAccelPts, epmIshopAccelPts, timesBlackIshopAccelPts, hsbcTwpRate, computeAepBands, resolveDashboardWidget, SMARTBUY_CAP, ISHOP_CAP, ISHOP_DAILY_ACCEL_CAP, TIMES_BLACK_ISHOP_CAP, TIMES_BLACK_DAILY_ACCEL_CAP, HSBC_TWP_CAP } from './points-config.js';
 import { loadCharts } from './charts.js';
@@ -40,8 +38,8 @@ export async function loadDashboard(quiet = false) {
 
   try {
     const [cardsSnap, mbAepSnap] = await Promise.all([
-      getDoc(doc(db, 'config', 'cards')),
-      getDoc(doc(db, 'config', 'mbAep')),
+      getCachedDoc('config', 'cards'),
+      getCachedDoc('config', 'mbAep'),
     ]);
     const cardsData = cardsSnap.exists() ? cardsSnap.data() : {};
     const cards = Object.entries(cardsData)

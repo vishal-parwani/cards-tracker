@@ -11,8 +11,25 @@
 // Firestore's latency compensation, so reading the store right after a
 // write is safe.
 
-import { collection, query, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import { collection, query, onSnapshot, doc, getDoc, getDocFromCache } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
+
+// Cache-first read for small config docs. A plain getDoc is server-first and
+// hangs on a zombie connection (iOS PWA resumed from background) — that froze
+// the dashboard/txn tabs behind a dead socket. The IndexedDB cache answers
+// instantly (and reflects local pending writes); a background server read
+// keeps the cache fresh for the next paint. Server is only awaited on a true
+// cache miss (first-ever signed-in load on a device).
+export async function getCachedDoc(col, id) {
+  const ref = doc(db, col, id);
+  try {
+    const snap = await getDocFromCache(ref);
+    getDoc(ref).catch(() => {});
+    return snap;
+  } catch {
+    return getDoc(ref);
+  }
+}
 
 let txns = null;
 let vts = null;

@@ -18,7 +18,7 @@
 // activate handler purges every cache that isn't the current version
 // (the CDN cache is exempt — immutable URLs never go stale).
 
-const CACHE_VERSION = 'cards-v29';
+const CACHE_VERSION = 'cards-v30';
 const CDN_CACHE = 'cards-cdn-v1';
 const CDN_PREFIXES = [
   'https://www.gstatic.com/firebasejs/',

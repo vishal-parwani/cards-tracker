@@ -126,6 +126,14 @@ function txnIsVt(t) {
   return !!(t.voucherTradeParentId || (t.voucherTradeChildIds || []).length);
 }
 
+// Credits are stored positive but represent money coming back — the row shows
+// them with a leading '-'. Filtering/reasoning uses this signed value so the
+// amount filter agrees with the displayed sign.
+function signedAmount(t) {
+  const a = t.amount || 0;
+  return t.type === 'credit' ? -a : a;
+}
+
 // (The one-time 'Voucher Trades' category backfill that used to live here ran
 // to completion weeks ago — flag `vtCategoryBackfill` in config/migrations.
 // Its launch-blocking flag check was removed 2026-07-20.)
@@ -1194,8 +1202,12 @@ async function loadFilteredTransactions() {
       const q = f.description.toLowerCase();
       txns = txns.filter(t => (t.description || '').toLowerCase().includes(q));
     }
-    if (f.amount.min !== '') { const m = parseFloat(f.amount.min); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) >= m); }
-    if (f.amount.max !== '') { const m = parseFloat(f.amount.max); if (!isNaN(m)) txns = txns.filter(t => (t.amount || 0) <= m); }
+    // Credits are stored with a positive amount but shown (and reasoned about)
+    // as negative — so filter on the signed amount, matching the Amount column.
+    // min 0 then correctly excludes credits; a min/max range works on signed
+    // values the way the displayed sign implies.
+    if (f.amount.min !== '') { const m = parseFloat(f.amount.min); if (!isNaN(m)) txns = txns.filter(t => signedAmount(t) >= m); }
+    if (f.amount.max !== '') { const m = parseFloat(f.amount.max); if (!isNaN(m)) txns = txns.filter(t => signedAmount(t) <= m); }
     if (f.source.length)   txns = txns.filter(t => txnMatchesSource(t, f.source));
     if (f.vt === 'vt')     txns = txns.filter(t => txnIsVt(t));
     else if (f.vt === 'nonvt') txns = txns.filter(t => !txnIsVt(t));

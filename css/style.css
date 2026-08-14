@@ -313,6 +313,7 @@ body {
 .desc-text    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .desc-chip-row { margin-top: 1px; line-height: 1; }
 .desc-chip-row .vt-chip { margin-left: 0; }
+.desc-note { font-size: 11px; color: #888; line-height: 1.25; white-space: normal; margin-top: 1px; }
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
 

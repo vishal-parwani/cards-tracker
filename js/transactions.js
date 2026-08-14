@@ -256,6 +256,7 @@ function colHasFilter(col) {
 }
 
 function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 function buildFilterControl(col) {
   const f = colFilters;
@@ -638,6 +639,7 @@ function rowHtml(t, vtChildMap = new Map()) {
       <td>${t.card || ''}${statusIcon ? ' ' + statusIcon : ''}</td>
       <td class="desc-cell">
         <div class="desc-text" onclick="window.showDescPopover(event, this)">${t.description || ''}</div>
+        ${t.notes ? `<div class="desc-note">(${escHtml(t.notes)})</div>` : ''}
         ${chipRow ? `<div class="desc-chip-row">${chipRow}</div>` : ''}
       </td>
       <td>${t.category || ''}</td>

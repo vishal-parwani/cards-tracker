@@ -52,11 +52,13 @@ async function computeAepForMonth(monthSort, cardName) {
 
   const b = computeAepBands(eligibleSpend, mbAep);
 
+  // The ledger tracks the AEP milestone credit, i.e. the ACCELERATED points
+  // only (`aepPoints`) — not the base points that post per-transaction.
   return {
     eligibleSpend, totalDebit, txnCount, ineligibleCount,
-    band: b.band, calculatedPoints: b.calculatedPoints,
+    band: b.band, calculatedPoints: b.aepPoints,
     breakdown: {
-      band1Pts: b.band1Pts, band2Pts: b.band2Pts, band3Pts: b.band3Pts,
+      band1Bonus: b.band1Bonus, band2Bonus: b.band2Bonus, band3Bonus: b.band3Bonus,
       band1Max: b.band1Max, band2Max: b.band2Max,
       band1Rate: b.band1Rate, band2Rate: b.band2Rate, band3Rate: b.band3Rate,
     },
@@ -151,7 +153,7 @@ function renderTable(rows) {
           <th>Month</th>
           <th>Eligible Spend</th>
           <th>Band</th>
-          <th>Calculated</th>
+          <th>Calculated AEP</th>
           <th>Received</th>
           <th>Status</th>
           <th>Action</th>
@@ -266,16 +268,19 @@ export async function openAepDetailModal(id) {
   lines.push(`Excluded / AEP-Ineligible: ${calc.ineligibleCount} txn${calc.ineligibleCount === 1 ? '' : 's'}`);
   lines.push(`AEP-eligible spend: <strong>${formatCurrency(calc.eligibleSpend)}</strong>`);
   lines.push('');
-  lines.push(`<u>Band breakdown</u>`);
-  lines.push(`Band 1 (${b.band1Rate}/200, up to ${formatCurrency(b.band1Max)}): ${b.band1Pts.toLocaleString('en-IN')} pts`);
-  if (b.band2Pts > 0 || calc.eligibleSpend > b.band1Max) {
-    lines.push(`Band 2 (${b.band2Rate}/200, ${formatCurrency(b.band1Max)}–${formatCurrency(b.band2Max)}): ${b.band2Pts.toLocaleString('en-IN')} pts`);
+  lines.push(`<u>AEP (accelerated) breakdown</u>`);
+  const aep2Rate = Math.max(0, b.band2Rate - b.band1Rate);
+  const aep3Rate = Math.max(0, b.band3Rate - b.band1Rate);
+  lines.push(`Base ${b.band1Rate}/200 posts per-txn and is not part of the AEP credit.`);
+  lines.push(`Band 1 (up to ${formatCurrency(b.band1Max)}): no accelerated points`);
+  if (b.band2Bonus > 0 || calc.eligibleSpend > b.band1Max) {
+    lines.push(`Band 2 (+${aep2Rate}/200, ${formatCurrency(b.band1Max)}–${formatCurrency(b.band2Max)}): ${b.band2Bonus.toLocaleString('en-IN')} pts`);
   }
-  if (b.band3Pts > 0 || calc.eligibleSpend > b.band2Max) {
-    lines.push(`Band 3 (${b.band3Rate}/200, above ${formatCurrency(b.band2Max)}): ${b.band3Pts.toLocaleString('en-IN')} pts`);
+  if (b.band3Bonus > 0 || calc.eligibleSpend > b.band2Max) {
+    lines.push(`Band 3 (+${aep3Rate}/200, above ${formatCurrency(b.band2Max)}): ${b.band3Bonus.toLocaleString('en-IN')} pts`);
   }
   lines.push('');
-  lines.push(`<strong>Calculated total: ${calc.calculatedPoints.toLocaleString('en-IN')} pts</strong>`);
+  lines.push(`<strong>Calculated AEP: ${calc.calculatedPoints.toLocaleString('en-IN')} pts</strong>`);
   if (r.status === 'received') {
     const diff = (r.receivedPoints || 0) - calc.calculatedPoints;
     lines.push(`Received: ${r.receivedPoints?.toLocaleString('en-IN') ?? '—'} pts (${diff >= 0 ? '+' : ''}${diff.toLocaleString('en-IN')} vs calc)`);

@@ -172,8 +172,10 @@ export function isAepEligible(txn) {
     && txn.transactionTag !== 'AEP Ineligible';
 }
 
-// Prorate eligible AEP spend across the 3 bands. Returns per-band points,
-// the total, the band label, and the resolved thresholds/rates used.
+// Prorate eligible AEP spend across the 3 bands. `calculatedPoints` is the
+// TOTAL (base + accelerated) the bands earn; `aepPoints` is the ACCELERATED
+// portion only — the earn ABOVE the base rate (band1Rate) — which is what the
+// AEP milestone credits separately (23/200 in Band 2 by default: 35 − 12).
 export function computeAepBands(eligibleSpend, mbAep = {}) {
   const band1Max  = mbAep.band1Max  || AEP_BAND_DEFAULTS.band1Max;
   const band2Max  = mbAep.band2Max  || AEP_BAND_DEFAULTS.band2Max;
@@ -181,23 +183,32 @@ export function computeAepBands(eligibleSpend, mbAep = {}) {
   const band2Rate = mbAep.band2Rate || AEP_BAND_DEFAULTS.band2Rate;
   const band3Rate = mbAep.band3Rate || AEP_BAND_DEFAULTS.band3Rate;
 
-  let band1Pts = 0, band2Pts = 0, band3Pts = 0, band = 'Band 1';
-  if (eligibleSpend <= band1Max) {
-    band1Pts = Math.floor(eligibleSpend / 200) * band1Rate;
-    band = 'Band 1';
-  } else if (eligibleSpend <= band2Max) {
-    band1Pts = Math.floor(band1Max / 200) * band1Rate;
-    band2Pts = Math.floor((eligibleSpend - band1Max) / 200) * band2Rate;
-    band = 'Band 2';
-  } else {
-    band1Pts = Math.floor(band1Max / 200) * band1Rate;
-    band2Pts = Math.floor((band2Max - band1Max) / 200) * band2Rate;
-    band3Pts = Math.floor((eligibleSpend - band2Max) / 200) * band3Rate;
-    band = 'Band 3';
-  }
+  // Spend falling within each band.
+  const band1Spend = Math.min(eligibleSpend, band1Max);
+  const band2Spend = Math.max(0, Math.min(eligibleSpend, band2Max) - band1Max);
+  const band3Spend = Math.max(0, eligibleSpend - band2Max);
+
+  const band =
+    eligibleSpend <= band1Max ? 'Band 1' :
+    eligibleSpend <= band2Max ? 'Band 2' : 'Band 3';
+
+  // Total points (base + accelerated) each band earns.
+  const band1Pts = Math.floor(band1Spend / 200) * band1Rate;
+  const band2Pts = Math.floor(band2Spend / 200) * band2Rate;
+  const band3Pts = Math.floor(band3Spend / 200) * band3Rate;
+
+  // Accelerated (AEP) points only = earn above the base rate. Band 1 is the
+  // un-accelerated base, so its bonus is 0; Band 2 gives (band2Rate − base).
+  const base = band1Rate;
+  const band1Bonus = Math.floor(band1Spend / 200) * Math.max(0, band1Rate - base);
+  const band2Bonus = Math.floor(band2Spend / 200) * Math.max(0, band2Rate - base);
+  const band3Bonus = Math.floor(band3Spend / 200) * Math.max(0, band3Rate - base);
+
   return {
     band, band1Pts, band2Pts, band3Pts,
     calculatedPoints: band1Pts + band2Pts + band3Pts,
+    band1Bonus, band2Bonus, band3Bonus,
+    aepPoints: band1Bonus + band2Bonus + band3Bonus,
     band1Max, band2Max, band1Rate, band2Rate, band3Rate,
   };
 }

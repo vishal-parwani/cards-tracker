@@ -494,7 +494,7 @@ function renderMagnusAep(cardResults, mbAep) {
   if (!magnus) return '';
 
   const spend = magnus.magnusAepEligible;
-  const { band, calculatedPoints: pts, band1Max } = computeAepBands(spend, mbAep);
+  const { band, aepPoints: pts, band1Max } = computeAepBands(spend, mbAep);
 
   const toThreshold = Math.max(0, band1Max - spend);
   const pct = Math.min(100, (spend / band1Max) * 100).toFixed(0);
@@ -511,7 +511,7 @@ function renderMagnusAep(cardResults, mbAep) {
       </div>
       <div class="tracker-row">
         <span>${toThreshold > 0 ? formatCurrency(toThreshold) + ' to Band 2' : '✓ Band 2 reached'}</span>
-        <span>${pts.toLocaleString('en-IN')} pts earned</span>
+        <span>${pts.toLocaleString('en-IN')} AEP pts earned</span>
       </div>
     </div>
   `;

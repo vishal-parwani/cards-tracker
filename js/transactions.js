@@ -149,24 +149,14 @@ function autoComputePoints() {
   const description = document.getElementById('txn-description').value;
   const twpRate  = parseInt(document.getElementById('txn-twp-rate').value) || 0;
 
-  // Magnus Burgundy: band-aware, using the month's cumulative AEP-eligible
-  // spend from the store. Once the ₹1.5L limit is crossed, a new debit earns
-  // the Band-2 rate (35/200) — so a manual txn now matches the auto-captured
-  // one instead of falling back to the flat base 12/200.
+  // Magnus Burgundy: the month's cumulative eligible spend (from the store)
+  // decides only whether AEP is ON; the points come from this txn's own amount
+  // at that rate. Backend-stamped values are deliberately NOT preserved here —
+  // the processor floors a running total, so it can hand two identical amounts
+  // different points; recomputing keeps the UI self-consistent.
   if (card === 'Magnus Burgundy') {
     const pointsEl = document.getElementById('txn-points');
     if (type === 'credit') { pointsEl.value = 0; return; }
-
-    // Preserve a backend-stamped (chronologically prorated) value when editing
-    // an auto-captured txn whose amount is unchanged — the daily processor is
-    // canonical for those. Manual txns and amount changes are recomputed.
-    if (editingOriginal && editingOriginal.card === 'Magnus Burgundy'
-        && editingOriginal.source && editingOriginal.source !== 'manual'
-        && amount === (editingOriginal.amount || 0)
-        && (editingOriginal.pointsEarned || 0) > 0) {
-      pointsEl.value = editingOriginal.pointsEarned;
-      return;
-    }
 
     const curId = document.getElementById('txn-id').value;
     const dateStr = document.getElementById('txn-date').value;

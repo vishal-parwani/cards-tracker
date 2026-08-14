@@ -1,6 +1,6 @@
 import { collection, updateDoc, deleteDoc, doc, Timestamp, setDoc, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { db } from './config.js';
-import { getTxns, getVts, onStoreChange, getCachedDoc } from './store.js';
+import { getTxns, getVts, onStoreChange, getCachedDoc, peekTxns } from './store.js';
 
 // Store txns sorted date-desc (the list order). Docs without a date sink to
 // the bottom, matching the old orderBy('date','desc') server sort.
@@ -52,12 +52,13 @@ async function rerenderCurrentView() {
   document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
 }
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
-import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS } from './points-config.js';
+import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS, magnusTxnPoints, isAepEligible } from './points-config.js';
 
 const PAGE_SIZE = 50;
 let renderedCount = 0;
 let allLoaded = false;
 let modalCardsData = {};
+let modalMbAep = {};
 let stmtListenersAttached = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
@@ -148,29 +149,54 @@ function autoComputePoints() {
   const description = document.getElementById('txn-description').value;
   const twpRate  = parseInt(document.getElementById('txn-twp-rate').value) || 0;
 
-  // Magnus Burgundy edit-preserve: the backend prorates points across AEP
-  // bands (Band 2 = 35/200, vs base 12/200); the UI can't replicate that
-  // without cumulative state, so a naive recompute on edit would clobber
-  // a high-band value with the base rate. Preserve the stored value unless
-  // the new category zeros it or the amount changed.
-  if (card === 'Magnus Burgundy' && editingOriginal && editingOriginal.card === 'Magnus Burgundy') {
-    if (type === 'credit') { document.getElementById('txn-points').value = 0; return; }
-    if (AEP_EXCLUDED_CATS.has(category)) { document.getElementById('txn-points').value = 0; return; }
-    const origAmt = editingOriginal.amount || 0;
-    const origPts = editingOriginal.pointsEarned || 0;
-    if (amount === origAmt) {
-      document.getElementById('txn-points').value = origPts;
+  // Magnus Burgundy: band-aware, using the month's cumulative AEP-eligible
+  // spend from the store. Once the ₹1.5L limit is crossed, a new debit earns
+  // the Band-2 rate (35/200) — so a manual txn now matches the auto-captured
+  // one instead of falling back to the flat base 12/200.
+  if (card === 'Magnus Burgundy') {
+    const pointsEl = document.getElementById('txn-points');
+    if (type === 'credit') { pointsEl.value = 0; return; }
+
+    // Preserve a backend-stamped (chronologically prorated) value when editing
+    // an auto-captured txn whose amount is unchanged — the daily processor is
+    // canonical for those. Manual txns and amount changes are recomputed.
+    if (editingOriginal && editingOriginal.card === 'Magnus Burgundy'
+        && editingOriginal.source && editingOriginal.source !== 'manual'
+        && amount === (editingOriginal.amount || 0)
+        && (editingOriginal.pointsEarned || 0) > 0) {
+      pointsEl.value = editingOriginal.pointsEarned;
       return;
     }
-    if (origAmt > 0 && origPts > 0) {
-      // Scale by the original effective rate so a Band-2 txn stays Band-2.
-      document.getElementById('txn-points').value = Math.round((origPts / origAmt) * amount);
-      return;
-    }
+
+    const curId = document.getElementById('txn-id').value;
+    const dateStr = document.getElementById('txn-date').value;
+    const prior = magnusPriorEligible(card, curId, dateStr);
+    pointsEl.value = magnusTxnPoints(amount, category, tag, prior, modalMbAep);
+    return;
   }
 
   document.getElementById('txn-points').value =
     computePointsForTag(card, amount, category, type, tag, description, twpRate);
+}
+
+// Sum the month's AEP-eligible Magnus debits already booked (excluding the txn
+// being edited), read synchronously from the in-memory store. This is the
+// `priorEligible` the new/edited txn's marginal band points sit on top of.
+function magnusPriorEligible(card, excludeId, dateStr) {
+  const txns = peekTxns() || [];
+  const d = dateStr ? new Date(dateStr) : new Date();
+  const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
+  const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  let sum = 0;
+  for (const t of txns) {
+    if (t.id === excludeId) continue;
+    if (t.card !== card || t.type !== 'debit') continue;
+    if (!isAepEligible(t)) continue;
+    const td = t.date?.toDate ? t.date.toDate() : (t.date ? new Date(t.date) : null);
+    if (!td || td < mStart || td >= mEnd) continue;
+    sum += t.amount || 0;
+  }
+  return sum;
 }
 
 // The TWP rate selector only makes sense for a manually-tagged HSBC TWP txn
@@ -493,6 +519,8 @@ function updateStatementPeriod() {
 function ensureStmtListeners() {
   if (stmtListenersAttached) return;
   document.getElementById('txn-date').addEventListener('change', updateStatementPeriod);
+  // Date affects the AEP month window (which band a Magnus txn lands in).
+  document.getElementById('txn-date').addEventListener('change', autoComputePoints);
   document.getElementById('txn-card').addEventListener('change', updateStatementPeriod);
   // Card or description change → re-derive tag, then re-compute points.
   document.getElementById('txn-card').addEventListener('change', () => {
@@ -676,14 +704,20 @@ function removeRowFromDom(id) {
 }
 
 export async function openAddTransaction() {
-  const cardsSnap = await getCachedDoc('config', 'cards');
+  const [cardsSnap, mbAepSnap] = await Promise.all([
+    getCachedDoc('config', 'cards'), getCachedDoc('config', 'mbAep'),
+  ]);
+  modalMbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
   showTransactionModal(null, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 
 export async function openEditTransaction(id) {
   const txn = await txnById(id);
   if (!txn) return;
-  const cardsSnap = await getCachedDoc('config', 'cards');
+  const [cardsSnap, mbAepSnap] = await Promise.all([
+    getCachedDoc('config', 'cards'), getCachedDoc('config', 'mbAep'),
+  ]);
+  modalMbAep = mbAepSnap.exists() ? mbAepSnap.data() : {};
   showTransactionModal(txn, cardsSnap.exists() ? cardsSnap.data() : {});
 }
 

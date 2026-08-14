@@ -172,6 +172,23 @@ export function isAepEligible(txn) {
     && txn.transactionTag !== 'AEP Ineligible';
 }
 
+// Band-aware Magnus points for ONE debit, mirroring the backend's proration.
+// `priorEligible` is the month's AEP-eligible spend already booked (every other
+// eligible Magnus debit that month) — the store holds it all in memory, so the
+// UI no longer has to fall back to a flat base-rate guess. The txn earns the
+// MARGINAL band points its amount adds on top of `priorEligible`: base 12/200
+// up to ₹1.5L, then 35/200 (Band 2). Non-eligible-but-earning spend (Rent, or
+// AEP-Ineligible-tagged) earns base only; AEP-excluded categories earn 0.
+export function magnusTxnPoints(amount, category, tag, priorEligible = 0, mbAep = {}) {
+  if (AEP_EXCLUDED_CATS.has(category)) return 0;
+  const base = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
+  const eligible = category !== 'Rent' && tag !== 'AEP Ineligible';
+  if (!eligible) return Math.floor(amount / 200) * base;
+  const before = computeAepBands(priorEligible, mbAep).calculatedPoints;
+  const after  = computeAepBands(priorEligible + amount, mbAep).calculatedPoints;
+  return Math.max(0, after - before);
+}
+
 // Prorate eligible AEP spend across the 3 bands. `calculatedPoints` is the
 // TOTAL (base + accelerated) the bands earn; `aepPoints` is the ACCELERATED
 // portion only — the earn ABOVE the base rate (band1Rate) — which is what the

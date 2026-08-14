@@ -57,6 +57,11 @@ export function startStore() {
   }, e => console.error('[store] voucherTrades listener:', e));
 }
 
+// Synchronous peek at the current in-memory txns (null before the first
+// snapshot). For callers already inside an open modal, where the store is
+// certainly ready and an await would break a synchronous compute path.
+export function peekTxns() { return txns; }
+
 // Resolve once both listeners have delivered their first snapshot
 // (instantly from cache on repeat visits; from the server on first ever).
 export async function getTxns() { await ready; return txns; }

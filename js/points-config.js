@@ -201,11 +201,19 @@ export function magnusTxnPoints(amount, category, tag, priorEligible = 0, mbAep 
   if (tag === 'AEP Ineligible') {
     return Math.floor(amount / 200) * band1Rate;
   }
-  const cumulative = priorEligible + amount;
-  const rate = cumulative > band2Max ? band3Rate
-             : cumulative > band1Max ? band2Rate
-             : band1Rate;
-  return Math.floor(amount / 200) * rate;
+  // AEP starts only above band1Max, so only the part of THIS txn sitting above
+  // the threshold earns the AEP rate; the rest earns base. Each portion is
+  // floored on its own — flooring the running cumulative instead is what made
+  // two identical amounts in one month earn different points.
+  const pre  = Math.max(0, priorEligible);
+  const post = pre + amount;
+  const b1Amt = Math.max(0, Math.min(post, band1Max) - Math.min(pre, band1Max));
+  const b2Amt = post > band1Max
+    ? Math.max(0, Math.min(post, band2Max) - Math.max(pre, band1Max)) : 0;
+  const b3Amt = post > band2Max ? Math.max(0, post - Math.max(pre, band2Max)) : 0;
+  return Math.floor(b1Amt / 200) * band1Rate
+       + Math.floor(b2Amt / 200) * band2Rate
+       + Math.floor(b3Amt / 200) * band3Rate;
 }
 
 // Prorate eligible AEP spend across the 3 bands. `calculatedPoints` is the

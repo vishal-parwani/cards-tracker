@@ -157,9 +157,13 @@ function autoComputePoints() {
     const pointsEl = document.getElementById('txn-points');
     if (type === 'credit') { pointsEl.value = 0; return; }
 
-    // Preserve a backend-stamped (chronologically prorated) value when editing
-    // an auto-captured txn whose amount is unchanged — the daily processor is
-    // canonical for those. Manual txns and amount changes are recomputed.
+    // Preserve a backend-stamped value when editing an auto-captured txn whose
+    // amount is unchanged — the daily processor is canonical for those. Both
+    // sides now apply the same band-switch rule, but the processor decides the
+    // rate on the month's cumulative AT CAPTURE TIME while a recompute here
+    // sees the month's full total, so they can differ for a txn captured
+    // before the month crossed a band. Manual txns and amount changes are
+    // recomputed.
     if (editingOriginal && editingOriginal.card === 'Magnus Burgundy'
         && editingOriginal.source && editingOriginal.source !== 'manual'
         && amount === (editingOriginal.amount || 0)

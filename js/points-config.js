@@ -172,21 +172,35 @@ export function isAepEligible(txn) {
     && txn.transactionTag !== 'AEP Ineligible';
 }
 
-// Band-aware Magnus points for ONE debit, mirroring the backend's proration.
+// Band-aware Magnus points for ONE debit, mirroring the backend's compute_points.
 // `priorEligible` is the month's AEP-eligible spend already booked (every other
 // eligible Magnus debit that month) — the store holds it all in memory, so the
-// UI no longer has to fall back to a flat base-rate guess. The txn earns the
-// MARGINAL band points its amount adds on top of `priorEligible`: base 12/200
-// up to ₹1.5L, then 35/200 (Band 2). Non-eligible-but-earning spend (Rent, or
-// AEP-Ineligible-tagged) earns base only; AEP-excluded categories earn 0.
+// UI no longer has to fall back to a flat base-rate guess.
+//
+// The cumulative spend is a SWITCH, not a proration: it picks ONE rate and the
+// txn's whole amount earns at it. Prorating (the marginal band points the amount
+// added on top of `priorEligible`) floored the running total, so the stray
+// half-block landed on whichever txn straddled a band threshold — two identical
+// amounts in the same month came out with different points.
+//
+// Non-eligible-but-earning spend (Rent, or AEP-Ineligible-tagged) earns base
+// only; AEP-excluded categories earn 0.
 export function magnusTxnPoints(amount, category, tag, priorEligible = 0, mbAep = {}) {
   if (AEP_EXCLUDED_CATS.has(category)) return 0;
-  const base = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
-  const eligible = category !== 'Rent' && tag !== 'AEP Ineligible';
-  if (!eligible) return Math.floor(amount / 200) * base;
-  const before = computeAepBands(priorEligible, mbAep).calculatedPoints;
-  const after  = computeAepBands(priorEligible + amount, mbAep).calculatedPoints;
-  return Math.max(0, after - before);
+  const band1Max  = mbAep.band1Max  || AEP_BAND_DEFAULTS.band1Max;
+  const band2Max  = mbAep.band2Max  || AEP_BAND_DEFAULTS.band2Max;
+  const band1Rate = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
+  const band2Rate = mbAep.band2Rate || AEP_BAND_DEFAULTS.band2Rate;
+  const band3Rate = mbAep.band3Rate || AEP_BAND_DEFAULTS.band3Rate;
+
+  if (category === 'Rent' || tag === 'AEP Ineligible') {
+    return Math.floor(amount / 200) * band1Rate;
+  }
+  const cumulative = priorEligible + amount;
+  const rate = cumulative > band2Max ? band3Rate
+             : cumulative > band1Max ? band2Rate
+             : band1Rate;
+  return Math.floor(amount / 200) * rate;
 }
 
 // Prorate eligible AEP spend across the 3 bands. `calculatedPoints` is the

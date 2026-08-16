@@ -56,6 +56,9 @@ export const AEP_BAND_DEFAULTS = {
   band1Rate: 12, band2Rate: 35, band3Rate: 12,
 };
 
+// Magnus Rent earns the base rate on at most this much spend per transaction.
+export const MB_RENT_PTS_CAP = 50000;
+
 // Dashboard spend-tracker widgets. A card opts into one via its
 // `dashboardWidget` config field, so the widget (and the AEP ledger) follow
 // the card through a rename instead of being hard-bound to its name.
@@ -119,13 +122,11 @@ export function deriveTag(card, description) {
 export function computePointsForTag(card, amount, category, type, tag, description = '', twpRate = 0) {
   if (type === 'credit') return 0;
   if (card === 'Magnus Burgundy') {
-    // Backend zeros base points whenever the category is AEP-excluded.
-    // Otherwise it prorates across the 3 AEP bands (Band 2 = 35/200). The UI
-    // can't replicate band proration without per-txn cumulative state, so this
-    // returns the base 12/200 rate — used only as a "guide" for NEW txns. The
-    // edit flow preserves the backend-stored value (see transactions.js).
-    if (AEP_EXCLUDED_CATS.has(category)) return 0;
-    return Math.floor(amount / 200) * 12;
+    // One Magnus rule lives in magnusTxnPoints; delegate so the AEP switch,
+    // the Rent cap and the exclusions can't drift between the two. No prior
+    // spend is known here, so AEP is on only if this txn alone crosses the
+    // band — callers with month context should use magnusTxnPoints directly.
+    return magnusTxnPoints(amount, category, tag);
   }
   const excl = CARD_EXCLUDED_CATS[card];
   if (excl && excl.has(category)) return 0;
@@ -172,21 +173,47 @@ export function isAepEligible(txn) {
     && txn.transactionTag !== 'AEP Ineligible';
 }
 
-// Band-aware Magnus points for ONE debit, mirroring the backend's proration.
+// Band-aware Magnus points for ONE debit, mirroring the backend's compute_points.
 // `priorEligible` is the month's AEP-eligible spend already booked (every other
 // eligible Magnus debit that month) — the store holds it all in memory, so the
-// UI no longer has to fall back to a flat base-rate guess. The txn earns the
-// MARGINAL band points its amount adds on top of `priorEligible`: base 12/200
-// up to ₹1.5L, then 35/200 (Band 2). Non-eligible-but-earning spend (Rent, or
-// AEP-Ineligible-tagged) earns base only; AEP-excluded categories earn 0.
+// UI no longer has to fall back to a flat base-rate guess.
+//
+// The cumulative spend is a SWITCH, not a proration: it picks ONE rate and the
+// txn's whole amount earns at it. Prorating (the marginal band points the amount
+// added on top of `priorEligible`) floored the running total, so the stray
+// half-block landed on whichever txn straddled a band threshold — two identical
+// amounts in the same month came out with different points.
+//
+// Non-eligible-but-earning spend (Rent, or AEP-Ineligible-tagged) earns base
+// only; AEP-excluded categories earn 0.
 export function magnusTxnPoints(amount, category, tag, priorEligible = 0, mbAep = {}) {
   if (AEP_EXCLUDED_CATS.has(category)) return 0;
-  const base = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
-  const eligible = category !== 'Rent' && tag !== 'AEP Ineligible';
-  if (!eligible) return Math.floor(amount / 200) * base;
-  const before = computeAepBands(priorEligible, mbAep).calculatedPoints;
-  const after  = computeAepBands(priorEligible + amount, mbAep).calculatedPoints;
-  return Math.max(0, after - before);
+  const band1Max  = mbAep.band1Max  || AEP_BAND_DEFAULTS.band1Max;
+  const band2Max  = mbAep.band2Max  || AEP_BAND_DEFAULTS.band2Max;
+  const band1Rate = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
+  const band2Rate = mbAep.band2Rate || AEP_BAND_DEFAULTS.band2Rate;
+  const band3Rate = mbAep.band3Rate || AEP_BAND_DEFAULTS.band3Rate;
+
+  // Rent earns the base rate on at most MB_RENT_PTS_CAP of spend (backend rule).
+  if (category === 'Rent') {
+    return Math.floor(Math.min(amount, MB_RENT_PTS_CAP) / 200) * band1Rate;
+  }
+  if (tag === 'AEP Ineligible') {
+    return Math.floor(amount / 200) * band1Rate;
+  }
+  // AEP starts only above band1Max, so only the part of THIS txn sitting above
+  // the threshold earns the AEP rate; the rest earns base. Each portion is
+  // floored on its own — flooring the running cumulative instead is what made
+  // two identical amounts in one month earn different points.
+  const pre  = Math.max(0, priorEligible);
+  const post = pre + amount;
+  const b1Amt = Math.max(0, Math.min(post, band1Max) - Math.min(pre, band1Max));
+  const b2Amt = post > band1Max
+    ? Math.max(0, Math.min(post, band2Max) - Math.max(pre, band1Max)) : 0;
+  const b3Amt = post > band2Max ? Math.max(0, post - Math.max(pre, band2Max)) : 0;
+  return Math.floor(b1Amt / 200) * band1Rate
+       + Math.floor(b2Amt / 200) * band2Rate
+       + Math.floor(b3Amt / 200) * band3Rate;
 }
 
 // Prorate eligible AEP spend across the 3 bands. `calculatedPoints` is the

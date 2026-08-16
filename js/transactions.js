@@ -157,9 +157,13 @@ function autoComputePoints() {
     const pointsEl = document.getElementById('txn-points');
     if (type === 'credit') { pointsEl.value = 0; return; }
 
-    // Preserve a backend-stamped (chronologically prorated) value when editing
-    // an auto-captured txn whose amount is unchanged — the daily processor is
-    // canonical for those. Manual txns and amount changes are recomputed.
+    // Preserve a backend-stamped value when editing an auto-captured txn whose
+    // amount is unchanged — the daily processor is canonical for those. Both
+    // sides now apply the same band-switch rule, but the processor decides the
+    // rate on the month's cumulative AT CAPTURE TIME while a recompute here
+    // sees the month's full total, so they can differ for a txn captured
+    // before the month crossed a band. Manual txns and amount changes are
+    // recomputed.
     if (editingOriginal && editingOriginal.card === 'Magnus Burgundy'
         && editingOriginal.source && editingOriginal.source !== 'manual'
         && amount === (editingOriginal.amount || 0)
@@ -182,9 +186,19 @@ function autoComputePoints() {
 // Sum the month's AEP-eligible Magnus debits already booked (excluding the txn
 // being edited), read synchronously from the in-memory store. This is the
 // `priorEligible` the new/edited txn's marginal band points sit on top of.
+// AEP accumulates chronologically, so a txn only sees the eligible spend that
+// came BEFORE it that month — editing a historical txn must not price it off
+// spend that happened after it. Cut-off is the edited txn's own stored
+// timestamp when we have one; for a new txn (date input is date-only) it's the
+// end of the chosen day, so same-day spend already booked counts.
 function magnusPriorEligible(card, excludeId, dateStr) {
   const txns = peekTxns() || [];
+  const self = excludeId ? txns.find(t => t.id === excludeId) : null;
+  const selfDate = self?.date?.toDate ? self.date.toDate()
+                 : (self?.date ? new Date(self.date) : null);
   const d = dateStr ? new Date(dateStr) : new Date();
+  const cutoff = selfDate
+    || new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
   const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
   const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   let sum = 0;
@@ -194,6 +208,7 @@ function magnusPriorEligible(card, excludeId, dateStr) {
     if (!isAepEligible(t)) continue;
     const td = t.date?.toDate ? t.date.toDate() : (t.date ? new Date(t.date) : null);
     if (!td || td < mStart || td >= mEnd) continue;
+    if (td >= cutoff) continue;
     sum += t.amount || 0;
   }
   return sum;

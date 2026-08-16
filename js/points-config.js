@@ -56,6 +56,9 @@ export const AEP_BAND_DEFAULTS = {
   band1Rate: 12, band2Rate: 35, band3Rate: 12,
 };
 
+// Magnus Rent earns the base rate on at most this much spend per transaction.
+export const MB_RENT_PTS_CAP = 50000;
+
 // Dashboard spend-tracker widgets. A card opts into one via its
 // `dashboardWidget` config field, so the widget (and the AEP ledger) follow
 // the card through a rename instead of being hard-bound to its name.
@@ -119,13 +122,11 @@ export function deriveTag(card, description) {
 export function computePointsForTag(card, amount, category, type, tag, description = '', twpRate = 0) {
   if (type === 'credit') return 0;
   if (card === 'Magnus Burgundy') {
-    // Backend zeros base points whenever the category is AEP-excluded.
-    // Otherwise it prorates across the 3 AEP bands (Band 2 = 35/200). The UI
-    // can't replicate band proration without per-txn cumulative state, so this
-    // returns the base 12/200 rate — used only as a "guide" for NEW txns. The
-    // edit flow preserves the backend-stored value (see transactions.js).
-    if (AEP_EXCLUDED_CATS.has(category)) return 0;
-    return Math.floor(amount / 200) * 12;
+    // One Magnus rule lives in magnusTxnPoints; delegate so the AEP switch,
+    // the Rent cap and the exclusions can't drift between the two. No prior
+    // spend is known here, so AEP is on only if this txn alone crosses the
+    // band — callers with month context should use magnusTxnPoints directly.
+    return magnusTxnPoints(amount, category, tag);
   }
   const excl = CARD_EXCLUDED_CATS[card];
   if (excl && excl.has(category)) return 0;
@@ -193,7 +194,11 @@ export function magnusTxnPoints(amount, category, tag, priorEligible = 0, mbAep 
   const band2Rate = mbAep.band2Rate || AEP_BAND_DEFAULTS.band2Rate;
   const band3Rate = mbAep.band3Rate || AEP_BAND_DEFAULTS.band3Rate;
 
-  if (category === 'Rent' || tag === 'AEP Ineligible') {
+  // Rent earns the base rate on at most MB_RENT_PTS_CAP of spend (backend rule).
+  if (category === 'Rent') {
+    return Math.floor(Math.min(amount, MB_RENT_PTS_CAP) / 200) * band1Rate;
+  }
+  if (tag === 'AEP Ineligible') {
     return Math.floor(amount / 200) * band1Rate;
   }
   const cumulative = priorEligible + amount;

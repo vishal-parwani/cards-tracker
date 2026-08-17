@@ -98,7 +98,8 @@
                 <th>Description <button class="th-filter" data-col="description" title="Filter Description" aria-label="Filter Description"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
                 <th>Category <button class="th-filter" data-col="category" title="Filter Category" aria-label="Filter Category"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
                 <th>Amount <button class="th-filter" data-col="amount" title="Filter Amount" aria-label="Filter Amount"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
-                <th>Points</th>
+                <th title="Points posted with the statement">Base</th>
+                <th title="Accelerated points, credited separately at month end">Accel</th>
                 <th title="Tick once the bank has credited these points">Credited</th>
                 <th>Tag <button class="th-filter" data-col="tag" title="Filter Tag" aria-label="Filter Tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></th>
                 <th></th>
@@ -206,14 +207,18 @@
         </div>
         <div class="form-row two-col">
           <div>
-            <label>Points Earned</label>
-            <input type="number" id="txn-points" value="0" min="0">
+            <label>Base Points</label>
+            <input type="number" id="txn-points-base" value="0" min="0">
           </div>
           <div>
-            <label>Tag</label>
-            <!-- options populated from TRANSACTION_TAGS in transactions.js::showTransactionModal -->
-            <select id="txn-tag"></select>
+            <label>Accel Points</label>
+            <input type="number" id="txn-points-accel" value="0" min="0">
           </div>
+        </div>
+        <div class="form-row">
+          <label>Tag</label>
+          <!-- options populated from TRANSACTION_TAGS in transactions.js::showTransactionModal -->
+          <select id="txn-tag"></select>
         </div>
         <!-- Shown only for HSBC Premier + TWP tag (see syncTwpRateVisibility) -->
         <div class="form-row hidden" id="txn-twp-rate-row">

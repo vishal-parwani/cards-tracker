@@ -52,13 +52,15 @@ async function rerenderCurrentView() {
   document.getElementById('load-more-btn').style.display = allLoaded ? 'none' : 'block';
 }
 import { formatCurrency, formatDate, formatDateTime, formatDateInput, getMonthStr, CATEGORIES, TRANSACTION_TAGS, computeChildHaircutPnl, sumChildHaircut, aggregateChildStatus, guardWrite, showToast, initDatePickers } from './utils.js';
-import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS, magnusTxnPoints, isAepEligible } from './points-config.js';
+import { deriveTag, computePointsForTag, AEP_EXCLUDED_CATS, magnusTxnPoints, isAepEligible, splitPoints } from './points-config.js';
 
 const PAGE_SIZE = 50;
 let renderedCount = 0;
 let allLoaded = false;
 let modalCardsData = {};
 let modalMbAep = {};
+// Band rates for the base/accel split in the list; defaults until loaded.
+let mbAepCfg = {};
 let stmtListenersAttached = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
@@ -155,8 +157,7 @@ function autoComputePoints() {
   // the Band-2 rate (35/200) — so a manual txn now matches the auto-captured
   // one instead of falling back to the flat base 12/200.
   if (card === 'Magnus Burgundy') {
-    const pointsEl = document.getElementById('txn-points');
-    if (type === 'credit') { pointsEl.value = 0; return; }
+    if (type === 'credit') { setPointsFields(0, 0); return; }
 
     // Preserve a backend-stamped value when editing an auto-captured txn whose
     // amount is unchanged — the daily processor is canonical for those. Both
@@ -169,19 +170,36 @@ function autoComputePoints() {
         && editingOriginal.source && editingOriginal.source !== 'manual'
         && amount === (editingOriginal.amount || 0)
         && (editingOriginal.pointsEarned || 0) > 0) {
-      pointsEl.value = editingOriginal.pointsEarned;
+      const kept = splitPoints({ ...editingOriginal, card, amount, category,
+                                 type, transactionTag: tag }, modalMbAep);
+      setPointsFields(kept.base, kept.accel);
       return;
     }
 
     const curId = document.getElementById('txn-id').value;
     const dateStr = document.getElementById('txn-date').value;
     const prior = magnusPriorEligible(card, curId, dateStr);
-    pointsEl.value = magnusTxnPoints(amount, category, tag, prior, modalMbAep);
+    const total = magnusTxnPoints(amount, category, tag, prior, modalMbAep);
+    setSplitFromTotal(total, { card, amount, category, type, description,
+                               transactionTag: tag, twpRate });
     return;
   }
 
-  document.getElementById('txn-points').value =
-    computePointsForTag(card, amount, category, type, tag, description, twpRate);
+  const total = computePointsForTag(card, amount, category, type, tag, description, twpRate);
+  setSplitFromTotal(total, { card, amount, category, type, description,
+                             transactionTag: tag, twpRate });
+}
+
+function setPointsFields(base, accel) {
+  document.getElementById('txn-points-base').value = base || 0;
+  document.getElementById('txn-points-accel').value = accel || 0;
+}
+
+// Derive the base/accel split for a freshly computed total. No pointsMeta
+// exists yet for an unsaved edit, so splitPoints takes its derivation path.
+function setSplitFromTotal(total, txnLike) {
+  const { base, accel } = splitPoints({ ...txnLike, pointsEarned: total }, modalMbAep);
+  setPointsFields(base, accel);
 }
 
 // Sum the month's AEP-eligible Magnus debits already booked (excluding the txn
@@ -486,9 +504,12 @@ async function initColumnFilters() {
   // stalled the tab's first paint behind the whole collection. Orphan cards
   // (present in txns but missing from config) are absorbed lazily from rows
   // as pages actually load — see absorbOrphanCards().
-  const cardsSnap = await getCachedDoc('config', 'cards');
+  const [cardsSnap, mbAepSnap] = await Promise.all([
+    getCachedDoc('config', 'cards'), getCachedDoc('config', 'mbAep'),
+  ]);
   const configCards = cardsSnap.exists() ? cardsSnap.data() : {};
   knownConfigCards = new Set(Object.keys(configCards));
+  mbAepCfg = mbAepSnap.exists() ? mbAepSnap.data() : {};
 
   // Build status map from config/cards
   cardStatusMap = {};
@@ -569,7 +590,8 @@ function ensureStmtListeners() {
     autoComputePoints();
   });
   document.getElementById('txn-twp-rate').addEventListener('change', autoComputePoints);
-  document.getElementById('txn-points').addEventListener('input', () => { pointsManuallyEdited = true; });
+  document.getElementById('txn-points-base').addEventListener('input', () => { pointsManuallyEdited = true; });
+  document.getElementById('txn-points-accel').addEventListener('input', () => { pointsManuallyEdited = true; });
   stmtListenersAttached = true;
 }
 
@@ -590,7 +612,7 @@ export async function loadTransactions(reset = false) {
       renderedCount = 0;
       allLoaded = false;
       document.getElementById('transactions-list').innerHTML =
-        '<tr><td colspan="9" class="loading">Loading…</td></tr>';
+        '<tr><td colspan="10" class="loading">Loading…</td></tr>';
     }
     if (allLoaded) return;
 
@@ -611,7 +633,7 @@ export async function loadTransactions(reset = false) {
   } catch (e) {
     console.error('Load transactions failed:', e);
     document.getElementById('transactions-list').innerHTML =
-      `<tr><td colspan="9" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+      `<tr><td colspan="10" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
     document.getElementById('load-more-btn').style.display = 'none';
   }
 }
@@ -667,6 +689,7 @@ function creditedBoxFor(t) {
 
 function rowHtml(t, vtChildMap = new Map()) {
   const chipRow = srcChipFor(t) + vtChipFor(t, vtChildMap);
+  const pts = splitPoints(t, mbAepCfg);
   const statusIcon = cardStatusIcon(t.card);
   return `
     <tr data-id="${t.id}">
@@ -679,7 +702,8 @@ function rowHtml(t, vtChildMap = new Map()) {
       </td>
       <td>${t.category || ''}</td>
       <td class="amount-cell ${t.type === 'credit' ? 'credit' : ''}">${t.type === 'credit' ? '-' : ''}${formatCurrency(t.amount)}</td>
-      <td>${(t.pointsEarned || 0).toLocaleString('en-IN')}</td>
+      <td title="Total ${(t.pointsEarned || 0).toLocaleString('en-IN')}">${pts.base ? pts.base.toLocaleString('en-IN') : ''}</td>
+      <td class="accel-cell">${pts.accel ? pts.accel.toLocaleString('en-IN') : ''}</td>
       <td class="credited-cell">${creditedBoxFor(t)}</td>
       <td>${t.transactionTag || ''}</td>
       <td class="actions-cell">
@@ -695,7 +719,7 @@ function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
   if (replace) list.innerHTML = '';
 
   if (txns.length === 0 && replace) {
-    list.innerHTML = '<tr><td colspan="9" class="empty">No transactions found.</td></tr>';
+    list.innerHTML = '<tr><td colspan="10" class="empty">No transactions found.</td></tr>';
     return;
   }
 
@@ -706,11 +730,12 @@ function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
 // credit-heavy filter reads negative) + total points, with the debit/credit
 // split available on hover.
 function appendTotalsRow(txns) {
-  let debit = 0, credit = 0, points = 0;
+  let debit = 0, credit = 0, base = 0, accel = 0;
   txns.forEach(t => {
     const amt = t.amount || 0;
     if (t.type === 'credit') credit += amt; else debit += amt;
-    points += t.pointsEarned || 0;
+    const p = splitPoints(t, mbAepCfg);
+    base += p.base; accel += p.accel;
   });
   const net = debit - credit;
   const list = document.getElementById('transactions-list');
@@ -718,7 +743,8 @@ function appendTotalsRow(txns) {
     <tr class="txn-totals-row">
       <td colspan="4" class="txn-totals-label" data-label="Totals">Totals · ${txns.length} txn${txns.length === 1 ? '' : 's'}</td>
       <td class="amount-cell txn-totals-amt ${net < 0 ? 'credit' : ''}" data-label="Net" title="Debit ${formatCurrency(debit)} · Credit ${formatCurrency(credit)}">${formatCurrency(net)}</td>
-      <td class="txn-totals-pts" data-label="Pts">${points.toLocaleString('en-IN')}</td>
+      <td class="txn-totals-pts" data-label="Base">${base.toLocaleString('en-IN')}</td>
+      <td class="txn-totals-pts" data-label="Accel">${accel ? accel.toLocaleString('en-IN') : ''}</td>
       <td></td>
       <td></td>
       <td></td>
@@ -782,6 +808,10 @@ function showTransactionModal(txn, cardsData) {
     type: txn?.type || null,
     category: txn?.category || null,
     pointsEarned: txn?.pointsEarned || 0,
+    pointsMeta: txn?.pointsMeta || null,
+    pointsAccel: typeof txn?.pointsAccel === 'number' ? txn.pointsAccel : null,
+    description: txn?.description || '',
+    twpRate: txn?.twpRate || 0,
     voucherTradeParentId: txn?.voucherTradeParentId || null,
     voucherTradeChildIds: txn?.voucherTradeChildIds || null,
   } : null;
@@ -803,7 +833,8 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-category').value = txn?.category || '';
   document.getElementById('txn-amount').value = txn?.amount || '';
   document.getElementById('txn-type').value = txn?.type || 'debit';
-  document.getElementById('txn-points').value = txn?.pointsEarned || 0;
+  const openSplit = txn ? splitPoints(txn, mbAepCfg) : { base: 0, accel: 0 };
+  setPointsFields(openSplit.base, openSplit.accel);
   document.getElementById('txn-tag').value = txn?.transactionTag || '';
   document.getElementById('txn-twp-rate').value = txn?.twpRate ? String(txn.twpRate) : '';
   document.getElementById('txn-reimbursable').checked = txn?.reimbursable || false;
@@ -1160,6 +1191,9 @@ export async function saveTransaction() {
     dateValue = Timestamp.fromDate(new Date(dateStr));
   }
 
+  const basePts  = parseInt(document.getElementById('txn-points-base').value) || 0;
+  const accelPts = parseInt(document.getElementById('txn-points-accel').value) || 0;
+
   const data = {
     date: dateValue,
     card,
@@ -1167,7 +1201,8 @@ export async function saveTransaction() {
     category,
     amount,
     type: document.getElementById('txn-type').value,
-    pointsEarned: parseInt(document.getElementById('txn-points').value) || 0,
+    pointsEarned: basePts + accelPts,
+    pointsAccel: accelPts,
     transactionTag: document.getElementById('txn-tag').value,
     statementPeriod: document.getElementById('txn-statement-period').value.trim(),
     reimbursable: document.getElementById('txn-reimbursable').checked,
@@ -1259,7 +1294,7 @@ export async function deleteTransaction(id) {
 
 async function loadFilteredTransactions() {
   const list = document.getElementById('transactions-list');
-  list.innerHTML = '<tr><td colspan="9" class="loading">Loading…</td></tr>';
+  list.innerHTML = '<tr><td colspan="10" class="loading">Loading…</td></tr>';
   document.getElementById('load-more-btn').style.display = 'none';
 
   try {
@@ -1299,7 +1334,7 @@ async function loadFilteredTransactions() {
     if (txns.length) appendTotalsRow(txns);
   } catch (e) {
     console.error('Filtered transactions load failed:', e);
-    list.innerHTML = `<tr><td colspan="9" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+    list.innerHTML = `<tr><td colspan="10" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
   }
 }
 
@@ -1336,6 +1371,8 @@ export async function exportTransactionsXlsx() {
         Type: t.type || '',
         Amount: t.amount || 0,
         Points: t.pointsEarned || 0,
+        'Base Points': splitPoints(t, mbAepCfg).base,
+        'Accel Points': splitPoints(t, mbAepCfg).accel,
         'Points Credited': t.pointsCredited ? 'Yes' : '',
         Tag: t.transactionTag || '',
         'Statement Period': t.statementPeriod || '',

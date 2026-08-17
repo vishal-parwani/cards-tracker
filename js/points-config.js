@@ -180,7 +180,9 @@ export function splitPoints(txn, mbAep = {}) {
   const base1 = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
   let accel = null;
 
-  if (typeof meta.accel === 'number') {
+  if (typeof txn.pointsAccel === 'number') {
+    accel = txn.pointsAccel;                               // split set by hand in the modal
+  } else if (typeof meta.accel === 'number') {
     accel = meta.accel;                                   // SmartBuy / iShop / TWP
   } else if (txn.card === 'Magnus Burgundy') {
     if (meta.b2_pts !== undefined || meta.b3_pts !== undefined) {

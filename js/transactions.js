@@ -157,8 +157,7 @@ function autoComputePoints() {
   // the Band-2 rate (35/200) — so a manual txn now matches the auto-captured
   // one instead of falling back to the flat base 12/200.
   if (card === 'Magnus Burgundy') {
-    const pointsEl = document.getElementById('txn-points');
-    if (type === 'credit') { pointsEl.value = 0; return; }
+    if (type === 'credit') { setPointsFields(0, 0); return; }
 
     // Preserve a backend-stamped value when editing an auto-captured txn whose
     // amount is unchanged — the daily processor is canonical for those. Both
@@ -171,19 +170,36 @@ function autoComputePoints() {
         && editingOriginal.source && editingOriginal.source !== 'manual'
         && amount === (editingOriginal.amount || 0)
         && (editingOriginal.pointsEarned || 0) > 0) {
-      pointsEl.value = editingOriginal.pointsEarned;
+      const kept = splitPoints({ ...editingOriginal, card, amount, category,
+                                 type, transactionTag: tag }, modalMbAep);
+      setPointsFields(kept.base, kept.accel);
       return;
     }
 
     const curId = document.getElementById('txn-id').value;
     const dateStr = document.getElementById('txn-date').value;
     const prior = magnusPriorEligible(card, curId, dateStr);
-    pointsEl.value = magnusTxnPoints(amount, category, tag, prior, modalMbAep);
+    const total = magnusTxnPoints(amount, category, tag, prior, modalMbAep);
+    setSplitFromTotal(total, { card, amount, category, type, description,
+                               transactionTag: tag, twpRate });
     return;
   }
 
-  document.getElementById('txn-points').value =
-    computePointsForTag(card, amount, category, type, tag, description, twpRate);
+  const total = computePointsForTag(card, amount, category, type, tag, description, twpRate);
+  setSplitFromTotal(total, { card, amount, category, type, description,
+                             transactionTag: tag, twpRate });
+}
+
+function setPointsFields(base, accel) {
+  document.getElementById('txn-points-base').value = base || 0;
+  document.getElementById('txn-points-accel').value = accel || 0;
+}
+
+// Derive the base/accel split for a freshly computed total. No pointsMeta
+// exists yet for an unsaved edit, so splitPoints takes its derivation path.
+function setSplitFromTotal(total, txnLike) {
+  const { base, accel } = splitPoints({ ...txnLike, pointsEarned: total }, modalMbAep);
+  setPointsFields(base, accel);
 }
 
 // Sum the month's AEP-eligible Magnus debits already booked (excluding the txn
@@ -574,7 +590,8 @@ function ensureStmtListeners() {
     autoComputePoints();
   });
   document.getElementById('txn-twp-rate').addEventListener('change', autoComputePoints);
-  document.getElementById('txn-points').addEventListener('input', () => { pointsManuallyEdited = true; });
+  document.getElementById('txn-points-base').addEventListener('input', () => { pointsManuallyEdited = true; });
+  document.getElementById('txn-points-accel').addEventListener('input', () => { pointsManuallyEdited = true; });
   stmtListenersAttached = true;
 }
 
@@ -791,6 +808,10 @@ function showTransactionModal(txn, cardsData) {
     type: txn?.type || null,
     category: txn?.category || null,
     pointsEarned: txn?.pointsEarned || 0,
+    pointsMeta: txn?.pointsMeta || null,
+    pointsAccel: typeof txn?.pointsAccel === 'number' ? txn.pointsAccel : null,
+    description: txn?.description || '',
+    twpRate: txn?.twpRate || 0,
     voucherTradeParentId: txn?.voucherTradeParentId || null,
     voucherTradeChildIds: txn?.voucherTradeChildIds || null,
   } : null;
@@ -812,7 +833,8 @@ function showTransactionModal(txn, cardsData) {
   document.getElementById('txn-category').value = txn?.category || '';
   document.getElementById('txn-amount').value = txn?.amount || '';
   document.getElementById('txn-type').value = txn?.type || 'debit';
-  document.getElementById('txn-points').value = txn?.pointsEarned || 0;
+  const openSplit = txn ? splitPoints(txn, mbAepCfg) : { base: 0, accel: 0 };
+  setPointsFields(openSplit.base, openSplit.accel);
   document.getElementById('txn-tag').value = txn?.transactionTag || '';
   document.getElementById('txn-twp-rate').value = txn?.twpRate ? String(txn.twpRate) : '';
   document.getElementById('txn-reimbursable').checked = txn?.reimbursable || false;
@@ -1169,6 +1191,9 @@ export async function saveTransaction() {
     dateValue = Timestamp.fromDate(new Date(dateStr));
   }
 
+  const basePts  = parseInt(document.getElementById('txn-points-base').value) || 0;
+  const accelPts = parseInt(document.getElementById('txn-points-accel').value) || 0;
+
   const data = {
     date: dateValue,
     card,
@@ -1176,7 +1201,8 @@ export async function saveTransaction() {
     category,
     amount,
     type: document.getElementById('txn-type').value,
-    pointsEarned: parseInt(document.getElementById('txn-points').value) || 0,
+    pointsEarned: basePts + accelPts,
+    pointsAccel: accelPts,
     transactionTag: document.getElementById('txn-tag').value,
     statementPeriod: document.getElementById('txn-statement-period').value.trim(),
     reimbursable: document.getElementById('txn-reimbursable').checked,

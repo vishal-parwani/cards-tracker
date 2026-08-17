@@ -348,8 +348,15 @@ body {
 .txn-table th:nth-child(2), .txn-table td:nth-child(2) { width: 140px; }
 .txn-table th:nth-child(5), .txn-table td:nth-child(5) { width: 115px; }
 .txn-table th:nth-child(6), .txn-table td:nth-child(6) { width: 90px; text-align: right; }
-.txn-table th:nth-child(7), .txn-table td:nth-child(7) { width: 95px; }
+.txn-table th:nth-child(7), .txn-table td:nth-child(7) { width: 80px; text-align: center; }
+.txn-table th:nth-child(8), .txn-table td:nth-child(8) { width: 95px; }
 .txn-table th:last-child,   .txn-table td:last-child   { width: 64px; }
+
+/* Points-credited tick — manual confirmation that the bank posted the points */
+.credited-box {
+  width: 17px; height: 17px; cursor: pointer;
+  accent-color: var(--sage); vertical-align: middle;
+}
 
 /* Description popover */
 .desc-popover {
@@ -811,7 +818,8 @@ span.flatpickr-weekday {
       "date date amount"
       "desc desc desc"
       "card cat  act"
-      "pts  tag  act";
+      "pts  tag  act"
+      "crd  crd  act";
     column-gap: 8px;
     row-gap: 2px;
     align-items: baseline;
@@ -833,7 +841,9 @@ span.flatpickr-weekday {
   .txn-table td:nth-child(5) { grid-area: amount; width: auto; text-align: right; font-size: 16px; font-weight: 800; }
   .txn-table td:nth-child(6) { grid-area: pts;    width: auto; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-sec); }
   .txn-table td:nth-child(6):not(:empty)::before { content: "Pts "; }
-  .txn-table td:nth-child(7) { grid-area: tag;    width: auto; font-size: 11px; font-weight: 700; color: var(--text-sec); }
+  .txn-table td:nth-child(7) { grid-area: crd;    width: auto; font-size: 11px; font-weight: 700; color: var(--text-sec); }
+  .txn-table td:nth-child(7):not(:empty)::before { content: "Points credited "; }
+  .txn-table td:nth-child(8) { grid-area: tag;    width: auto; font-size: 11px; font-weight: 700; color: var(--text-sec); }
   .txn-table td:last-child {
     grid-area: act; width: auto;
     align-self: center; justify-self: end;

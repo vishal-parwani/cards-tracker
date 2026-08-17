@@ -2,7 +2,7 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/f
 import { auth } from './config.js';
 import { signInWithApple, signOut } from './auth.js';
 import { loadDashboard } from './dashboard.js';
-import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, saveTransaction, closeTransactionModal, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit, exportTransactionsXlsx, setExternalFilter } from './transactions.js';
+import { loadTransactions, openAddTransaction, openEditTransaction, deleteTransaction, togglePointsCredited, saveTransaction, closeTransactionModal, openConvertToVtModal, addSplitRow, saveVtSplits, unlinkVtFromTxn, openApplyToVtModal, saveVtApply, unlinkVtChildFromCredit, exportTransactionsXlsx, setExternalFilter } from './transactions.js';
 import { loadVoucherTrades, openMarkTradedModal, saveMarkTraded, closeMarkTradedModal, openAddTradeModal, openEditTradeModal, saveTrade, closeAddTradeModal, toggleCompleted, deleteVtParent, openEditSplitsModal, addEditSplitRow, saveEditSplits, openSettleVtModal, saveSettleVt, unsettleVt, onSettleVtCreditChange } from './voucher-trades.js';
 import { loadAepLedger, openMarkAepReceivedModal, openAepDetailModal, saveAepReceived, clearAepReceived } from './aep-ledger.js';
 import { loadRewards, setRewardsPreset, setRewardsCustom, openEditRewardModal, saveReward, deleteReward, closeRewardModal, addRedemptionRow } from './rewards.js';
@@ -13,6 +13,7 @@ import { startStore } from './store.js';
 // Expose handlers to HTML onclick attributes
 window.editTransaction = openEditTransaction;
 window.deleteTransaction = deleteTransaction;
+window.togglePointsCredited = togglePointsCredited;
 window.openMarkTradedModal = openMarkTradedModal;
 window.openEditTradeModal = openEditTradeModal;
 window.openEditSplitsModal = openEditSplitsModal;

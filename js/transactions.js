@@ -107,6 +107,7 @@ let colFilters = {
   tag: [],
   source: [],
   vt: '',
+  credited: '',
 };
 
 // A txn matches the source filter if its `source` matches ANY selected option.
@@ -254,7 +255,7 @@ function hasActiveFilters() {
   const f = colFilters;
   return !!(f.date.from || f.date.to || f.card.length || f.description ||
            f.category.length || f.amount.min !== '' || f.amount.max !== '' ||
-           f.tag.length || f.source.length || f.vt);
+           f.tag.length || f.source.length || f.vt || f.credited);
 }
 
 function colHasFilter(col) {
@@ -328,7 +329,7 @@ function updateFilterIcons() {
   });
   document.getElementById('clear-filters-btn')?.classList.toggle('hidden', !hasActiveFilters());
   document.getElementById('txn-filter-mobile-btn')?.classList.toggle('cf-on', hasActiveFilters());
-  document.getElementById('more-filters-btn')?.classList.toggle('cf-on', !!(colFilters.source.length || colFilters.vt));
+  document.getElementById('more-filters-btn')?.classList.toggle('cf-on', !!(colFilters.source.length || colFilters.vt || colFilters.credited));
 }
 
 function openColFilterPopover(btn, col) {
@@ -373,6 +374,9 @@ function buildMoreFiltersBody() {
     <label class="cf-check"><input type="checkbox" class="mf-source" value="${o}" ${src.includes(o) ? 'checked' : ''}><span>${o}</span></label>`).join('');
   const vtRadios = [['all', 'All'], ['vt', 'VT only'], ['nonvt', 'Non-VT']].map(([v, label]) => `
     <label class="cf-radio"><input type="radio" name="mf-vt" value="${v}" ${vt === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
+  const cr = colFilters.credited || 'all';
+  const crRadios = [['all', 'All'], ['yes', 'Credited'], ['no', 'Not credited']].map(([v, label]) => `
+    <label class="cf-radio"><input type="radio" name="mf-credited" value="${v}" ${cr === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
   return `
     <div class="cf-section">
       <div class="cf-title">Source</div>
@@ -381,6 +385,10 @@ function buildMoreFiltersBody() {
     <div class="cf-section">
       <div class="cf-title">Voucher Trade</div>
       ${vtRadios}
+    </div>
+    <div class="cf-section">
+      <div class="cf-title">Points Credited</div>
+      ${crRadios}
     </div>`;
 }
 
@@ -388,6 +396,8 @@ function readMoreFilters(root) {
   colFilters.source = [...root.querySelectorAll('.mf-source:checked')].map(c => c.value);
   const vt = root.querySelector('input[name="mf-vt"]:checked')?.value || 'all';
   colFilters.vt = vt === 'all' ? '' : vt;
+  const cr = root.querySelector('input[name="mf-credited"]:checked')?.value || 'all';
+  colFilters.credited = cr === 'all' ? '' : cr;
 }
 
 function openMoreFiltersPopover(btn) {
@@ -409,6 +419,7 @@ function openMoreFiltersPopover(btn) {
   pop.querySelector('.cf-clear').addEventListener('click', () => {
     colFilters.source = [];
     colFilters.vt = '';
+    colFilters.credited = '';
     pop.remove();
     applyColumnFilters();
     updateFilterIcons();
@@ -463,7 +474,7 @@ export function clearAllFilters() {
   colFilters = {
     date: { from: '', to: '' }, card: [], description: '',
     category: [], amount: { min: '', max: '' }, tag: [],
-    source: [], vt: '',
+    source: [], vt: '', credited: '',
   };
   updateFilterIcons();
   loadTransactions(true);
@@ -579,7 +590,7 @@ export async function loadTransactions(reset = false) {
       renderedCount = 0;
       allLoaded = false;
       document.getElementById('transactions-list').innerHTML =
-        '<tr><td colspan="8" class="loading">Loading…</td></tr>';
+        '<tr><td colspan="9" class="loading">Loading…</td></tr>';
     }
     if (allLoaded) return;
 
@@ -600,7 +611,7 @@ export async function loadTransactions(reset = false) {
   } catch (e) {
     console.error('Load transactions failed:', e);
     document.getElementById('transactions-list').innerHTML =
-      `<tr><td colspan="8" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+      `<tr><td colspan="9" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
     document.getElementById('load-more-btn').style.display = 'none';
   }
 }
@@ -645,6 +656,15 @@ function cardStatusIcon(cardName) {
   return CARD_STATUS_ICONS[status] || '';
 }
 
+// Manual tick for "the bank has actually credited these points". Only offered
+// where points are expected — a zero-point txn has nothing to confirm.
+function creditedBoxFor(t) {
+  if (!(t.pointsEarned > 0)) return '';
+  return `<input type="checkbox" class="credited-box" ${t.pointsCredited ? 'checked' : ''}
+    title="Points credited by the bank"
+    onchange="window.togglePointsCredited('${t.id}', this.checked)">`;
+}
+
 function rowHtml(t, vtChildMap = new Map()) {
   const chipRow = srcChipFor(t) + vtChipFor(t, vtChildMap);
   const statusIcon = cardStatusIcon(t.card);
@@ -660,6 +680,7 @@ function rowHtml(t, vtChildMap = new Map()) {
       <td>${t.category || ''}</td>
       <td class="amount-cell ${t.type === 'credit' ? 'credit' : ''}">${t.type === 'credit' ? '-' : ''}${formatCurrency(t.amount)}</td>
       <td>${(t.pointsEarned || 0).toLocaleString('en-IN')}</td>
+      <td class="credited-cell">${creditedBoxFor(t)}</td>
       <td>${t.transactionTag || ''}</td>
       <td class="actions-cell">
         <button class="btn-icon" onclick="window.editTransaction('${t.id}')">✏️</button>
@@ -674,7 +695,7 @@ function renderTransactions(txns, replace = false, vtChildMap = new Map()) {
   if (replace) list.innerHTML = '';
 
   if (txns.length === 0 && replace) {
-    list.innerHTML = '<tr><td colspan="8" class="empty">No transactions found.</td></tr>';
+    list.innerHTML = '<tr><td colspan="9" class="empty">No transactions found.</td></tr>';
     return;
   }
 
@@ -698,6 +719,7 @@ function appendTotalsRow(txns) {
       <td colspan="4" class="txn-totals-label" data-label="Totals">Totals · ${txns.length} txn${txns.length === 1 ? '' : 's'}</td>
       <td class="amount-cell txn-totals-amt ${net < 0 ? 'credit' : ''}" data-label="Net" title="Debit ${formatCurrency(debit)} · Credit ${formatCurrency(credit)}">${formatCurrency(net)}</td>
       <td class="txn-totals-pts" data-label="Pts">${points.toLocaleString('en-IN')}</td>
+      <td></td>
       <td></td>
       <td></td>
     </tr>
@@ -1219,6 +1241,13 @@ export async function saveTransaction() {
   }
 }
 
+// The checkbox already shows the new state, and the store's snapshot re-render
+// reflects the write; a rejected write rolls the store back and toasts.
+export function togglePointsCredited(id, checked) {
+  guardWrite(() => updateDoc(doc(db, 'transactions', id), { pointsCredited: !!checked }),
+             'Update points credited');
+}
+
 export async function deleteTransaction(id) {
   if (!confirm('Delete this transaction?')) return;
   guardWrite(() => deleteDoc(doc(db, 'transactions', id)), 'Delete transaction');
@@ -1230,7 +1259,7 @@ export async function deleteTransaction(id) {
 
 async function loadFilteredTransactions() {
   const list = document.getElementById('transactions-list');
-  list.innerHTML = '<tr><td colspan="8" class="loading">Loading…</td></tr>';
+  list.innerHTML = '<tr><td colspan="9" class="loading">Loading…</td></tr>';
   document.getElementById('load-more-btn').style.display = 'none';
 
   try {
@@ -1262,13 +1291,15 @@ async function loadFilteredTransactions() {
     if (f.source.length)   txns = txns.filter(t => txnMatchesSource(t, f.source));
     if (f.vt === 'vt')     txns = txns.filter(t => txnIsVt(t));
     else if (f.vt === 'nonvt') txns = txns.filter(t => !txnIsVt(t));
+    if (f.credited === 'yes')     txns = txns.filter(t => !!t.pointsCredited);
+    else if (f.credited === 'no') txns = txns.filter(t => t.pointsEarned > 0 && !t.pointsCredited);
 
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, true, vtChildMap);
     if (txns.length) appendTotalsRow(txns);
   } catch (e) {
     console.error('Filtered transactions load failed:', e);
-    list.innerHTML = `<tr><td colspan="8" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
+    list.innerHTML = `<tr><td colspan="9" class="error">Couldn't load transactions: ${e.message}</td></tr>`;
   }
 }
 
@@ -1305,6 +1336,7 @@ export async function exportTransactionsXlsx() {
         Type: t.type || '',
         Amount: t.amount || 0,
         Points: t.pointsEarned || 0,
+        'Points Credited': t.pointsCredited ? 'Yes' : '',
         Tag: t.transactionTag || '',
         'Statement Period': t.statementPeriod || '',
         Reimbursable: t.reimbursable ? 'Yes' : '',

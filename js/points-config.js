@@ -165,6 +165,48 @@ export function timesBlackIshopAccelPts(amount) {
   return Math.floor((amount || 0) / 100) * 10;  // 5× accel of 2pts/₹100
 }
 
+// Split a txn's stored pointsEarned into what posts with the statement (base)
+// and what the bank pays separately at month end (accelerated) — Magnus AEP,
+// Infinia SmartBuy, EPM/Times Black iShop, HSBC TWP.
+//
+// The backend already records the accel portion in `pointsMeta`, so that is
+// the source of truth; the derivation below is only a fallback for docs
+// written before that metadata existed (or edited by hand in the UI).
+export function splitPoints(txn, mbAep = {}) {
+  const total = txn.pointsEarned || 0;
+  if (!total) return { base: 0, accel: 0 };
+  const meta = txn.pointsMeta || {};
+  const amount = txn.amount || 0;
+  const base1 = mbAep.band1Rate || AEP_BAND_DEFAULTS.band1Rate;
+  let accel = null;
+
+  if (typeof meta.accel === 'number') {
+    accel = meta.accel;                                   // SmartBuy / iShop / TWP
+  } else if (txn.card === 'Magnus Burgundy') {
+    if (meta.b2_pts !== undefined || meta.b3_pts !== undefined) {
+      // Band portions above band 1 earn the AEP rate; the base share of those
+      // same portions is what the statement itself credits.
+      const above = (b_pts, b_amt) =>
+        Math.max(0, (b_pts || 0) - Math.floor((b_amt || 0) / 200) * base1);
+      accel = above(meta.b2_pts, meta.b2_amt) + above(meta.b3_pts, meta.b3_amt);
+    } else if (isAepEligible(txn)) {
+      accel = Math.max(0, total - Math.floor(amount / 200) * base1);
+    }
+  } else if (txn.card === 'Infinia' && txn.transactionTag === 'SmartBuy') {
+    accel = smartBuyAccelPts(amount);
+  } else if (txn.card === 'ICICI EPM' && txn.transactionTag === 'iShop') {
+    accel = epmIshopAccelPts(amount);
+  } else if (txn.card === 'Times Black' && txn.transactionTag === 'iShop') {
+    accel = timesBlackIshopAccelPts(amount);
+  } else if (txn.card === 'HSBC Premier') {
+    const rate = txn.twpRate || hsbcTwpRate((txn.description || '').toUpperCase());
+    if (rate) accel = Math.floor(amount / 100) * (rate - 3);
+  }
+
+  accel = Math.min(Math.max(accel || 0, 0), total);
+  return { base: total - accel, accel };
+}
+
 // Magnus AEP eligibility for a single transaction.
 export function isAepEligible(txn) {
   return txn.type === 'debit'

@@ -13,6 +13,7 @@ export const CARD_POINTS_RATES = {
   'ICICI EPM':       { rate: 6,  per: 200 },
   'Times Black':     { rate: 2,  per: 100 },
   'HSBC Premier':    { rate: 3,  per: 100 },
+  'Atlas':           { rate: 2,  per: 100 },   // EDGE Miles; travel earns 5 (see below)
 };
 
 // Categories that earn ZERO base points, per card. Magnus Burgundy is
@@ -23,7 +24,20 @@ export const CARD_EXCLUDED_CATS = {
   'ICICI EPM':   new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
   'Times Black': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
   'HSBC Premier': new Set(['Fuel', 'Fees & Charges']),
+  // Axis Atlas T&C (20-Apr-2024): gold/jewellery, rent, wallet, government,
+  // insurance, fuel, utilities and telecom earn no EDGE Miles.
+  'Atlas': new Set(['Shopping - Jewellery', 'Rent', 'Wallet Load',
+                    'Government Services', 'Insurance', 'Fuel',
+                    'Utilities & Telecom', 'Fees & Charges']),
 };
+
+// Atlas earns 5 EDGE Miles/₹100 on travel (Travel EDGE portal, direct airline,
+// direct hotel) and 2/₹100 on everything else. The 5x is capped at ₹2L of
+// travel spend per calendar month — the backend enforces that cap; this guide
+// is un-capped, same convention as SmartBuy/iShop.
+export const ATLAS_TRAVEL_CATS = new Set(['Travel', 'Travel - Air', 'Travel - Hotels']);
+export const ATLAS_TRAVEL_RATE = 5;
+export const ATLAS_TRAVEL_SPEND_CAP = 200000;
 
 // HSBC Premier earns base 3/100 in these categories only up to ₹1L cumulative
 // spend/calendar month (combined). The UI guide shows the un-capped base
@@ -130,6 +144,9 @@ export function computePointsForTag(card, amount, category, type, tag, descripti
   }
   const excl = CARD_EXCLUDED_CATS[card];
   if (excl && excl.has(category)) return 0;
+  if (card === 'Atlas' && ATLAS_TRAVEL_CATS.has(category)) {
+    return Math.floor(amount / 100) * ATLAS_TRAVEL_RATE;
+  }
   if (card === 'Infinia' && tag === 'SmartBuy') {
     return Math.floor(amount / 150) * 25;  // 5x = base 5 + accel 20
   }

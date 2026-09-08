@@ -61,6 +61,8 @@ let modalCardsData = {};
 let modalMbAep = {};
 // Band rates for the base/accel split in the list; defaults until loaded.
 let mbAepCfg = {};
+// last4 → { mainCard, holderName } for cards registered as add-ons in Settings.
+let addOnCards = {};
 let stmtListenersAttached = false;
 let pointsManuallyEdited = false;
 let tagManuallyEdited = false;
@@ -504,12 +506,14 @@ async function initColumnFilters() {
   // stalled the tab's first paint behind the whole collection. Orphan cards
   // (present in txns but missing from config) are absorbed lazily from rows
   // as pages actually load — see absorbOrphanCards().
-  const [cardsSnap, mbAepSnap] = await Promise.all([
+  const [cardsSnap, mbAepSnap, addOnSnap] = await Promise.all([
     getCachedDoc('config', 'cards'), getCachedDoc('config', 'mbAep'),
+    getCachedDoc('config', 'addOnCards'),
   ]);
   const configCards = cardsSnap.exists() ? cardsSnap.data() : {};
   knownConfigCards = new Set(Object.keys(configCards));
   mbAepCfg = mbAepSnap.exists() ? mbAepSnap.data() : {};
+  addOnCards = addOnSnap.exists() ? (addOnSnap.data() || {}) : {};
 
   // Build status map from config/cards
   cardStatusMap = {};
@@ -687,6 +691,16 @@ function creditedBoxFor(t) {
     onchange="window.togglePointsCredited('${t.id}', this.checked)">`;
 }
 
+// A txn is on an add-on card when the card number it was made with is one of
+// the add-ons registered in Settings. Older txns predate `last4` being stored,
+// so they carry no marker. Legacy add-on entries are a bare card-name string.
+function addOnNoteFor(t) {
+  const info = t.last4 ? addOnCards[t.last4] : null;
+  if (!info) return '';
+  const holder = typeof info === 'string' ? '' : (info.holderName || '').trim();
+  return `<div class="card-note">(Add On${holder ? ' · ' + escHtml(holder) : ''})</div>`;
+}
+
 function rowHtml(t, vtChildMap = new Map()) {
   const chipRow = srcChipFor(t) + vtChipFor(t, vtChildMap);
   const pts = splitPoints(t, mbAepCfg);
@@ -694,7 +708,7 @@ function rowHtml(t, vtChildMap = new Map()) {
   return `
     <tr data-id="${t.id}">
       <td>${formatDateTime(t.date)}</td>
-      <td>${t.card || ''}${statusIcon ? ' ' + statusIcon : ''}</td>
+      <td class="card-cell">${t.card || ''}${statusIcon ? ' ' + statusIcon : ''}${addOnNoteFor(t)}</td>
       <td class="desc-cell">
         <div class="desc-text" onclick="window.showDescPopover(event, this)">${t.description || ''}</div>
         ${t.notes ? `<div class="desc-note">(${escHtml(t.notes)})</div>` : ''}

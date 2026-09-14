@@ -314,6 +314,7 @@ body {
 .desc-chip-row { margin-top: 1px; line-height: 1; }
 .desc-chip-row .vt-chip { margin-left: 0; }
 .desc-note { font-size: 11px; color: #888; line-height: 1.25; white-space: normal; margin-top: 1px; }
+.card-note { font-size: 10px; font-weight: 600; color: #888; line-height: 1.2; margin-top: 1px; }
 .amount-cell  { font-weight: 700; text-align: right; }
 .amount-cell.credit { color: var(--sage); }
 
@@ -839,6 +840,7 @@ span.flatpickr-weekday {
   .txn-table td::before { content: none; }
   .txn-table td:nth-child(1) { grid-area: date;   width: auto; font-size: 12px; font-weight: 700; color: var(--text-sec); }
   .txn-table td:nth-child(2) { grid-area: card;   width: auto; font-size: 12px; font-weight: 700; color: var(--text); }
+  .txn-table td:nth-child(2) .card-note { font-size: 10px; font-weight: 600; }
   .txn-table td:nth-child(3) { grid-area: desc;   font-size: 14px; font-weight: 700; padding: 5px 0 3px; }
   .txn-table td:nth-child(4) { grid-area: cat;    font-size: 12px; font-weight: 600; color: var(--text-sec); }
   .txn-table td:nth-child(5) { grid-area: amount; width: auto; text-align: right; font-size: 16px; font-weight: 800; }

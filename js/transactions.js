@@ -112,6 +112,7 @@ let colFilters = {
   source: [],
   vt: '',
   credited: '',
+  addon: '',
 };
 
 // A txn matches the source filter if its `source` matches ANY selected option.
@@ -130,6 +131,14 @@ function txnMatchesSource(t, sel) {
 
 function txnIsVt(t) {
   return !!(t.voucherTradeParentId || (t.voucherTradeChildIds || []).length);
+}
+
+// Same source as the "(Add On)" row marker: the txn's card number registered
+// under Settings -> Add-on cards. Only txns written after 2026-09-08 store
+// `last4` at all, and manual entries never do, so anything older reads as
+// primary — see the note by addOnNoteFor.
+function txnIsAddOn(t) {
+  return !!(t.last4 && addOnCards[t.last4]);
 }
 
 // Credits are stored positive but represent money coming back — the row shows
@@ -275,7 +284,7 @@ function hasActiveFilters() {
   const f = colFilters;
   return !!(f.date.from || f.date.to || f.card.length || f.description ||
            f.category.length || f.amount.min !== '' || f.amount.max !== '' ||
-           f.tag.length || f.source.length || f.vt || f.credited);
+           f.tag.length || f.source.length || f.vt || f.credited || f.addon);
 }
 
 function colHasFilter(col) {
@@ -349,7 +358,8 @@ function updateFilterIcons() {
   });
   document.getElementById('clear-filters-btn')?.classList.toggle('hidden', !hasActiveFilters());
   document.getElementById('txn-filter-mobile-btn')?.classList.toggle('cf-on', hasActiveFilters());
-  document.getElementById('more-filters-btn')?.classList.toggle('cf-on', !!(colFilters.source.length || colFilters.vt || colFilters.credited));
+  document.getElementById('more-filters-btn')?.classList.toggle('cf-on', !!(colFilters.source.length || colFilters.vt || colFilters.credited
+       || colFilters.addon));
 }
 
 function openColFilterPopover(btn, col) {
@@ -397,6 +407,9 @@ function buildMoreFiltersBody() {
   const cr = colFilters.credited || 'all';
   const crRadios = [['all', 'All'], ['yes', 'Credited'], ['no', 'Not credited']].map(([v, label]) => `
     <label class="cf-radio"><input type="radio" name="mf-credited" value="${v}" ${cr === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
+  const ao = colFilters.addon || 'all';
+  const aoRadios = [['all', 'All'], ['yes', 'Add-on only'], ['no', 'Primary only']].map(([v, label]) => `
+    <label class="cf-radio"><input type="radio" name="mf-addon" value="${v}" ${ao === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
   return `
     <div class="cf-section">
       <div class="cf-title">Source</div>
@@ -409,6 +422,10 @@ function buildMoreFiltersBody() {
     <div class="cf-section">
       <div class="cf-title">Points Credited</div>
       ${crRadios}
+    </div>
+    <div class="cf-section">
+      <div class="cf-title">Card Used</div>
+      ${aoRadios}
     </div>`;
 }
 
@@ -418,6 +435,8 @@ function readMoreFilters(root) {
   colFilters.vt = vt === 'all' ? '' : vt;
   const cr = root.querySelector('input[name="mf-credited"]:checked')?.value || 'all';
   colFilters.credited = cr === 'all' ? '' : cr;
+  const ao = root.querySelector('input[name="mf-addon"]:checked')?.value || 'all';
+  colFilters.addon = ao === 'all' ? '' : ao;
 }
 
 function openMoreFiltersPopover(btn) {
@@ -440,6 +459,7 @@ function openMoreFiltersPopover(btn) {
     colFilters.source = [];
     colFilters.vt = '';
     colFilters.credited = '';
+    colFilters.addon = '';
     pop.remove();
     applyColumnFilters();
     updateFilterIcons();
@@ -486,6 +506,8 @@ export function setExternalFilter({ category, card, dateFrom, dateTo } = {}) {
     tag: [],
     source: [],
     vt: '',
+    credited: '',
+    addon: '',
   };
   updateFilterIcons();
 }
@@ -494,7 +516,7 @@ export function clearAllFilters() {
   colFilters = {
     date: { from: '', to: '' }, card: [], description: '',
     category: [], amount: { min: '', max: '' }, tag: [],
-    source: [], vt: '', credited: '',
+    source: [], vt: '', credited: '', addon: '',
   };
   updateFilterIcons();
   loadTransactions(true);
@@ -1342,6 +1364,8 @@ async function loadFilteredTransactions() {
     else if (f.vt === 'nonvt') txns = txns.filter(t => !txnIsVt(t));
     if (f.credited === 'yes')     txns = txns.filter(t => !!t.pointsCredited);
     else if (f.credited === 'no') txns = txns.filter(t => t.pointsEarned > 0 && !t.pointsCredited);
+    if (f.addon === 'yes')     txns = txns.filter(t => txnIsAddOn(t));
+    else if (f.addon === 'no') txns = txns.filter(t => !txnIsAddOn(t));
 
     const vtChildMap = await buildVtEnrichment(txns);
     renderTransactions(txns, true, vtChildMap);

@@ -14,6 +14,7 @@ export const CARD_POINTS_RATES = {
   'Times Black':     { rate: 2,  per: 100 },
   'HSBC Premier':    { rate: 3,  per: 100 },
   'Atlas':           { rate: 2,  per: 100 },   // EDGE Miles; travel earns 5 (see below)
+  'Axis Olympus':    { rate: 1,  per: 100 },   // add-on on wife's card; flat rate
 };
 
 // Categories that earn ZERO base points, per card. Magnus Burgundy is
@@ -24,6 +25,7 @@ export const CARD_EXCLUDED_CATS = {
   'ICICI EPM':   new Set(['Fuel', 'Fees & Charges', 'Government Services', 'Rent', 'Wallet Load']),
   'Times Black': new Set(['Fees & Charges', 'Fuel', 'Government Services', 'Insurance']),
   'HSBC Premier': new Set(['Fuel', 'Fees & Charges']),
+  'Axis Olympus': new Set(['Fees & Charges']),
   // Axis Atlas T&C (20-Apr-2024): gold/jewellery, rent, wallet, government,
   // insurance, fuel, utilities and telecom earn no EDGE Miles.
   'Atlas': new Set(['Shopping - Jewellery', 'Rent', 'Wallet Load',

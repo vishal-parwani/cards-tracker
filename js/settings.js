@@ -6,11 +6,19 @@ import { DASHBOARD_WIDGETS, resolveDashboardWidget } from './points-config.js';
 let _cardsCache = {};
 let _addonCache = {};
 
+// A card's own numbers. `last4s` is the list; `last4` is the single-value
+// shape Settings used to write and some entries still carry.
+function cardLast4s(value) {
+  let raw = (value && typeof value === 'object') ? (value.last4s ?? value.last4) : null;
+  if (typeof raw === 'string') raw = raw.split(',');
+  return (raw || []).map(n => String(n).trim()).filter(Boolean);
+}
+
 // Normalize old flat format (integer) to new object format
 function normalizeCard(name, value) {
   if (typeof value === 'number') {
     return {
-      name, statementDate: value, billPaymentDate: null, bank: '', last4: '',
+      name, statementDate: value, billPaymentDate: null, bank: '', last4s: [],
       active: true, deleted: false, showOnDashboard: true, showWhenZero: false,
       showInTrackers: true, autoAdjustCredits: true,
       dashboardWidget: resolveDashboardWidget(name, value), dateHistory: [],
@@ -21,7 +29,7 @@ function normalizeCard(name, value) {
     statementDate:   value.statementDate   ?? null,
     billPaymentDate: value.billPaymentDate  ?? null,
     bank:            value.bank            || '',
-    last4:           value.last4           || '',
+    last4s:          cardLast4s(value),
     pdfPassword:     value.pdfPassword     || '',
     forexRate:       value.forexRate       ?? null,
     active:          value.active          !== false,
@@ -104,7 +112,7 @@ function cardTileHtml(card, esc) {
         <span class="card-name">${card.name}</span>
         ${statusBadge}
       </div>
-      <div class="settings-tile-sub">${card.bank || ''}${card.last4 ? (card.bank ? ' ' : '') + '••' + card.last4 : ''}</div>
+      <div class="settings-tile-sub">${card.bank || ''}${card.last4s.length ? (card.bank ? ' ' : '') + card.last4s.map(n => '••' + n).join(' ') : ''}</div>
       <div class="settings-tile-rows">
         <div class="settings-tile-row"><span>Statement</span><strong>${card.statementDate ? 'Day ' + card.statementDate : '—'}</strong></div>
         <div class="settings-tile-row"><span>Bill due</span><strong>${card.billPaymentDate ? 'Day ' + card.billPaymentDate : '—'}</strong></div>
@@ -201,7 +209,7 @@ export function openEditCardModal(name) {
   document.getElementById('card-original-name').value = card.name;
   document.getElementById('card-name-input').value = card.name;
   document.getElementById('card-bank-input').value = card.bank || '';
-  document.getElementById('card-last4-input').value = card.last4 || '';
+  document.getElementById('card-last4-input').value = card.last4s.join(', ');
   document.getElementById('card-pdf-password-input').value = card.pdfPassword || '';
   document.getElementById('card-cutoff-input').value = card.statementDate || '';
   document.getElementById('card-bill-input').value = card.billPaymentDate || '';
@@ -222,7 +230,8 @@ export async function saveCard() {
   const originalName    = document.getElementById('card-original-name').value.trim();
   const newName         = document.getElementById('card-name-input').value.trim();
   const bank            = document.getElementById('card-bank-input').value.trim();
-  const last4           = document.getElementById('card-last4-input').value.trim();
+  const last4s          = document.getElementById('card-last4-input').value
+                            .split(',').map(n => n.trim()).filter(Boolean);
   const pdfPassword     = document.getElementById('card-pdf-password-input').value.trim();
   const statementDate   = parseInt(document.getElementById('card-cutoff-input').value) || null;
   const billPaymentDate = parseInt(document.getElementById('card-bill-input').value) || null;
@@ -268,7 +277,7 @@ export async function saveCard() {
     });
   }
 
-  const updatedCard = { statementDate, billPaymentDate, bank, last4, pdfPassword, forexRate, active, showOnDashboard, showWhenZero, showInTrackers, autoAdjustCredits, dashboardWidget, dateHistory };
+  const updatedCard = { statementDate, billPaymentDate, bank, last4s, last4: last4s[0] || '', pdfPassword, forexRate, active, showOnDashboard, showWhenZero, showInTrackers, autoAdjustCredits, dashboardWidget, dateHistory };
 
   if (isRename && !confirm(
     `Rename "${originalName}" to "${newName}"? This also updates all of its ` +

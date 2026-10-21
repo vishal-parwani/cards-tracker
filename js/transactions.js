@@ -58,6 +58,8 @@ const PAGE_SIZE = 50;
 let renderedCount = 0;
 let allLoaded = false;
 let modalCardsData = {};
+// Card name -> [{ last4, label }] for the modal's Card Number dropdown.
+let modalCardNumbers = {};
 let modalMbAep = {};
 // Band rates for the base/accel split in the list; defaults until loaded.
 let mbAepCfg = {};
@@ -596,6 +598,9 @@ function ensureStmtListeners() {
   // Date affects the AEP month window (which band a Magnus txn lands in).
   document.getElementById('txn-date').addEventListener('change', autoComputePoints);
   document.getElementById('txn-card').addEventListener('change', updateStatementPeriod);
+  document.getElementById('txn-card').addEventListener('change', () => {
+    syncLastFourOptions(document.getElementById('txn-last4').value);
+  });
   // Card or description change → re-derive tag, then re-compute points.
   document.getElementById('txn-card').addEventListener('change', () => {
     autoSetTagFromDesc();
@@ -720,7 +725,42 @@ function addOnNoteFor(t) {
   const info = t.last4 ? addOnCards[t.last4] : null;
   if (!info) return '';
   const holder = typeof info === 'string' ? '' : (info.holderName || '').trim();
-  return `<div class="card-note">(Add On${holder ? ' · ' + escHtml(holder) : ''})</div>`;
+  return ` <span class="src-chip src-chip-addon">${holder ? escHtml(holder) : 'Add on'}</span>`;
+}
+
+// Every number Settings knows for a card: its own (config/cards.last4s, or the
+// legacy single last4) plus any add-on registered against it.
+function cardNumbersFor(cardName, cardsData) {
+  const cfg = cardsData?.[cardName];
+  let own = (cfg && typeof cfg === 'object') ? (cfg.last4s ?? cfg.last4) : null;
+  if (typeof own === 'string') own = [own];
+  const out = (own || [])
+    .map(n => String(n).trim())
+    .filter(Boolean)
+    .map(n => ({ last4: n, label: `••${n}` }));
+  for (const [n, info] of Object.entries(addOnCards)) {
+    const main = typeof info === 'string' ? info : (info?.mainCard || '');
+    if (main !== cardName) continue;
+    const holder = typeof info === 'string' ? '' : (info?.holderName || '').trim();
+    out.push({ last4: String(n).trim(), label: `••${n}${holder ? ' · ' + holder : ' · add-on'}` });
+  }
+  return out;
+}
+
+function syncLastFourOptions(selected) {
+  const card = document.getElementById('txn-card').value;
+  const opts = [...(modalCardNumbers[card] || [])];
+  // Keep a stored number that Settings no longer lists, so saving can't wipe it
+  // (same safeguard as the card and category dropdowns).
+  if (selected && !opts.some(o => o.last4 === selected)) {
+    opts.push({ last4: selected, label: `••${selected}` });
+  }
+  const row = document.getElementById('txn-last4-row');
+  row.classList.toggle('hidden', opts.length === 0);
+  document.getElementById('txn-last4').innerHTML =
+    '<option value="">— not recorded —</option>' +
+    opts.map(o => `<option value="${o.last4}">${escHtml(o.label)}</option>`).join('');
+  document.getElementById('txn-last4').value = selected || '';
 }
 
 function rowHtml(t, vtChildMap = new Map()) {
@@ -829,6 +869,9 @@ function showTransactionModal(txn, cardsData) {
   modalCardsData = Object.fromEntries(
     Object.entries(cardsData).map(([name, val]) => [name, typeof val === 'number' ? val : (val.statementDate || 1)])
   );
+  modalCardNumbers = Object.fromEntries(
+    Object.keys(cardsData).map(name => [name, cardNumbersFor(name, cardsData)])
+  );
   // Ensure the transaction's own card (possibly deleted/orphan) always appears in the dropdown
   const cardSet = new Set(Object.keys(cardsData));
   if (txn?.card) cardSet.add(txn.card);
@@ -840,6 +883,7 @@ function showTransactionModal(txn, cardsData) {
     date: txn?.date || null,
     source: txn?.source || null,
     card: txn?.card || null,
+    last4: txn?.last4 || '',
     amount: txn?.amount || 0,
     type: txn?.type || null,
     category: txn?.category || null,
@@ -853,6 +897,7 @@ function showTransactionModal(txn, cardsData) {
   } : null;
   document.getElementById('txn-date').value = date;
   document.getElementById('txn-card').innerHTML = cards.map(c => `<option value="${c}" ${txn?.card === c ? 'selected' : ''}>${c}</option>`).join('');
+  syncLastFourOptions(txn?.last4 || '');
   document.getElementById('txn-description').value = txn?.description || '';
   // Populate category + tag dropdowns from the canonical lists, always keeping
   // the txn's own stored value as an option (like the card dropdown above) so a
@@ -1233,6 +1278,7 @@ export async function saveTransaction() {
   const data = {
     date: dateValue,
     card,
+    last4: document.getElementById('txn-last4').value,
     description: document.getElementById('txn-description').value.trim(),
     category,
     amount,

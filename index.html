@@ -183,6 +183,12 @@
             <select id="txn-card"></select>
           </div>
         </div>
+        <!-- Numbers for the chosen card; add-ons are labelled with the holder.
+             Hidden when Settings knows no number for that card. -->
+        <div class="form-row" id="txn-last4-row">
+          <label>Card Number</label>
+          <select id="txn-last4"></select>
+        </div>
         <div class="form-row">
           <label>Description</label>
           <input type="text" id="txn-description" placeholder="Merchant name">
@@ -496,8 +502,8 @@
           <input type="text" id="card-bank-input" placeholder="e.g. HDFC Bank">
         </div>
         <div class="form-row">
-          <label>Last 4 Digits</label>
-          <input type="text" id="card-last4-input" maxlength="4" placeholder="e.g. 9843">
+          <label>Last 4 Digits <span class="form-hint">(comma-separated if the card has more than one)</span></label>
+          <input type="text" id="card-last4-input" placeholder="e.g. 9843, 9002">
         </div>
         <div class="form-row">
           <label>PDF Password <span class="form-hint">(for encrypted statements)</span></label>
